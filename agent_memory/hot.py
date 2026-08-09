@@ -102,13 +102,52 @@ def _drop(con, path: str) -> None:
     con.execute("DELETE FROM hot_files WHERE path = ?", (path,))
 
 
-def _index_file(con, path: Path, project: str | None) -> int:
+def _section_id(path: Path, heading: str, body: str) -> str:
+    """Identity of a mirrored section: its file, its heading, and its exact body.
+
+    The body hash is in the key on purpose. Graph annotations hang off memory_id with
+    ON DELETE CASCADE, so an id that outlives an edit would re-attach yesterday's
+    entities to text they were not written about; an id that changes with the body
+    makes the edited section a different memory and drops its annotations, which is
+    the honest outcome. Position is deliberately *not* in the key -- it was, and that
+    made inserting one section renumber every section below it, so an untouched
+    paragraph lost its annotations because something above it moved.
+    """
+    digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
+    return uuid.uuid5(_NAMESPACE, f"{path}|{heading}|{digest}").hex
+
+
+def _index_file(con, path: Path, project: str | None) -> tuple[int, int]:
+    """Mirror one file, touching only the sections that actually changed.
+
+    Returns (sections, kept). These files are edited every session, so re-inserting
+    the whole file would take the graph annotations of every untouched section with
+    it. Unchanged sections are also not re-embedded, which is where the time goes.
+
+    Two sections with an identical heading *and* an identical body collapse into one
+    row -- they are the same text, and one index entry answers for both.
+    """
     mtime, size, digest = _digest(path)
     text = path.read_text(encoding="utf-8", errors="replace")
     sections = _sections(text, path.stem)
 
-    for index, (heading, body) in enumerate(sections):
-        memory_id = uuid.uuid5(_NAMESPACE, f"{path}|{index}|{heading}").hex
+    wanted = {_section_id(path, heading, body): (heading, body)
+              for heading, body in sections}
+    existing = {
+        row["id"]
+        for row in con.execute(
+            "SELECT id FROM memories WHERE tier = 'hot' AND path = ?", (str(path),)
+        )
+    }
+    gone = list(existing - wanted.keys())
+    if gone:
+        marks = ",".join("?" * len(gone))
+        con.execute(f"DELETE FROM memories_fts WHERE memory_id IN ({marks})", gone)
+        con.execute(f"DELETE FROM memories WHERE id IN ({marks})", gone)
+
+    for memory_id, (heading, body) in wanted.items():
+        if memory_id in existing:
+            continue
         con.execute(
             "INSERT INTO memories"
             "(id, session, project, topic, content, created_at, source, tier, path) "
@@ -130,18 +169,23 @@ def _index_file(con, path: Path, project: str | None) -> int:
         )
 
     con.execute(
-        "INSERT INTO hot_files(path, mtime, size, hash) VALUES (?, ?, ?, ?)",
+        "INSERT OR REPLACE INTO hot_files(path, mtime, size, hash) "
+        "VALUES (?, ?, ?, ?)",
         (str(path), mtime, size, digest),
     )
-    return len(sections)
+    return len(wanted), len(existing & wanted.keys())
 
 
 def sync(con, force: bool = False) -> dict:
     """Bring the hot mirror in line with the files on disk.
 
     Called before every recall. The cheap part -- stat + hash of a few dozen files --
-    runs every time; embedding only runs for files whose content actually changed, so
-    a warm store adds milliseconds rather than re-encoding hundreds of sections.
+    runs every time; embedding only runs for sections whose content actually changed,
+    so a warm store adds milliseconds rather than re-encoding hundreds of sections.
+
+    `force` means rebuild, not just re-check: it drops each file's mirror so every
+    section is embedded again, which is what a model swap needs. Without it, sections
+    that still hash the same are left alone, vectors and graph annotations included.
     """
     known = {
         row["path"]: (row["mtime"], row["size"], row["hash"])
@@ -149,7 +193,7 @@ def sync(con, force: bool = False) -> dict:
     }
     present = _files()
     project = None
-    stats = {"indexed": 0, "sections": 0, "removed": 0, "unchanged": 0}
+    stats = {"indexed": 0, "sections": 0, "kept": 0, "removed": 0, "unchanged": 0}
 
     for path in present:
         key = str(path)
@@ -165,8 +209,11 @@ def sync(con, force: bool = False) -> dict:
             from .store import detect_project
 
             project = detect_project()
-        _drop(con, key)
-        stats["sections"] += _index_file(con, path, project)
+        if force:
+            _drop(con, key)
+        sections, kept = _index_file(con, path, project)
+        stats["sections"] += sections
+        stats["kept"] += kept
         stats["indexed"] += 1
 
     for stale in known:  # files that disappeared or moved

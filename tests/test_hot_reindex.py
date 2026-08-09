@@ -97,5 +97,85 @@ def test_unchanged_files_are_not_reindexed(store):
     con = db.connect()
     hot.sync(con)
     again = hot.sync(con)
-    assert again == {"indexed": 0, "sections": 0, "removed": 0, "unchanged": 1}
+    assert again == {
+        "indexed": 0, "sections": 0, "kept": 0, "removed": 0, "unchanged": 1
+    }
+    con.close()
+
+
+TWO_SECTIONS = (
+    "# 첫 번째 주제\n\n한국어 검색이 안 되는 문제를 고쳤다.\n\n"
+    "# 두 번째 주제\n\nAI-DLC v2 패치를 4트리에 재적용했다.\n"
+)
+EDITED_SECOND = (
+    "# 첫 번째 주제\n\n한국어 검색이 안 되는 문제를 고쳤다.\n\n"
+    "# 두 번째 주제\n\n패치를 4트리에 재적용하고 doctor 결과까지 확인했다.\n"
+)
+INSERTED_ABOVE = (
+    "# 새로 끼운 주제\n\n평가셋을 20개에서 72개로 늘렸다.\n\n" + TWO_SECTIONS
+)
+
+
+def annotated(con, memory_id: str) -> bool:
+    return bool(
+        con.execute(
+            "SELECT 1 FROM memory_entities WHERE memory_id = ?", (memory_id,)
+        ).fetchone()
+    )
+
+
+def section_id(con, heading: str) -> str:
+    return con.execute(
+        "SELECT id FROM memories WHERE tier = 'hot' AND topic = ?", (heading,)
+    ).fetchone()["id"]
+
+
+def test_editing_one_section_keeps_the_others_annotations(store):
+    """Graph annotations cascade off memory_id, so re-inserting an untouched section
+    would silently delete work that took a full read of the memory to produce."""
+    hot_dir, db, hot, _ = store
+    (hot_dir / "a.md").write_text(TWO_SECTIONS, encoding="utf-8")
+    con = db.connect()
+    hot.sync(con)
+
+    from agent_memory import graph
+
+    untouched = section_id(con, "첫 번째 주제")
+    edited = section_id(con, "두 번째 주제")
+    for memory_id in (untouched, edited):
+        graph.attach(con, memory_id, [{"name": f"엔티티-{memory_id[:4]}"}], [])
+    assert annotated(con, untouched) and annotated(con, edited)
+
+    os.utime(hot_dir / "a.md", (0, 0))
+    (hot_dir / "a.md").write_text(EDITED_SECOND, encoding="utf-8")
+    stats = hot.sync(con)
+    assert stats == {
+        "indexed": 1, "sections": 2, "kept": 1, "removed": 0, "unchanged": 0
+    }
+
+    # The untouched section kept its id, its vectors and its annotations; the edited
+    # one is a different memory now, so its annotations are gone rather than reused.
+    assert section_id(con, "첫 번째 주제") == untouched
+    assert annotated(con, untouched)
+    assert section_id(con, "두 번째 주제") != edited
+    assert not annotated(con, edited)
+    assert orphan_count(con) == 0
+    con.close()
+
+
+def test_inserting_a_section_does_not_renumber_the_rest(store):
+    """Position is not part of the id: adding a section above must not invalidate the
+    sections below it, which is what an index-keyed id did."""
+    hot_dir, db, hot, _ = store
+    (hot_dir / "a.md").write_text(TWO_SECTIONS, encoding="utf-8")
+    con = db.connect()
+    hot.sync(con)
+    before = {section_id(con, h) for h in ("첫 번째 주제", "두 번째 주제")}
+
+    os.utime(hot_dir / "a.md", (0, 0))
+    (hot_dir / "a.md").write_text(INSERTED_ABOVE, encoding="utf-8")
+    stats = hot.sync(con)
+    assert stats["sections"] == 3 and stats["kept"] == 2
+    assert before == {section_id(con, h) for h in ("첫 번째 주제", "두 번째 주제")}
+    assert orphan_count(con) == 0
     con.close()
