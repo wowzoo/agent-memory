@@ -48,7 +48,14 @@ def _load():
         tok = Tokenizer.from_file(str(tokenizer_file))
         tok.enable_truncation(max_length=config.MAX_TOKENS)
         tok.enable_padding()
+        # Clear it explicitly rather than trusting the file: `save_pretrained`
+        # bakes transformers' own truncation/padding defaults into tokenizer.json,
+        # so a freshly exported tokenizer reintroduces exactly that bug (measured
+        # on this store: 599 chunks collapse to 337). An export without those keys
+        # is the lucky case, not the contract.
         _chunk_tokenizer = Tokenizer.from_file(str(tokenizer_file))
+        _chunk_tokenizer.no_truncation()
+        _chunk_tokenizer.no_padding()
         sess = ort.InferenceSession(
             str(model_file), providers=["CPUExecutionProvider"]
         )

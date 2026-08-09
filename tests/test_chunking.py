@@ -19,6 +19,10 @@ KOREAN_PARAGRAPH = (
 
 def _raw_tokens(text: str) -> int:
     tok = Tokenizer.from_file(str(config.MODEL_DIR / "tokenizer.json"))
+    # The measuring instrument must not truncate either: an export produced by
+    # `save_pretrained` carries truncation in tokenizer.json, which would cap this
+    # count at MAX_TOKENS and make the fixture look too short to test anything.
+    tok.no_truncation()
     return len(tok.encode(text, add_special_tokens=False).ids)
 
 

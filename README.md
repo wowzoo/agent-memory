@@ -89,22 +89,29 @@ hot 계층은 이 도구에서 **읽기 전용**입니다. `mem_write`는 파일
 
 ## 지금 성능
 
-이전된 101건 위에서, 손으로 쓴 패러프레이즈 질의 20개 기준 (`scripts/eval_paraphrase.py`):
+기억 118건 위에서, 손으로 쓴 패러프레이즈 질의 20개 기준 (`scripts/eval_paraphrase.py`):
 
 | 레인 | Recall@1 | Recall@5 | MRR | 중위 순위 |
 |---|---|---|---|---|
-| lexical (Kiwi + BM25) | 45.0% | 75.0% | 0.557 | 3위 |
-| semantic (e5-small-ko) | 40.0% | 80.0% | 0.550 | 2위 |
-| **hybrid (RRF)** | **50.0%** | **85.0%** | **0.655** | **1위** |
+| lexical (Kiwi + BM25) | 45.0% | 75.0% | 0.555 | 3위 |
+| semantic (e5-small-ko) | 45.0% | 85.0% | 0.597 | 2위 |
+| **hybrid (RRF)** | **60.0%** | **85.0%** | **0.729** | **1위** |
 
 두 레인을 합쳐야 어느 한쪽보다 낫습니다. 출발점(단일 FTS 컬럼 · 토픽 벡터 없음 · HTML 이스케이프
-잔존)은 hybrid R@1 25% / MRR 0.462였고, 아래 세 가지로 여기까지 왔습니다.
+잔존)은 hybrid R@1 25% / MRR 0.462였고, 아래 네 가지로 여기까지 왔습니다.
 
 - **토픽을 독립 신호로**: 토픽 줄을 별도 벡터로 임베딩 + FTS 토픽 컬럼 분리 후 3배 가중.
   단독으로는 각각 R@1 25%·30%였는데 함께 쓰니 45%로 올랐습니다 (`scripts/experiment_topic_signal.py`).
 - **청킹 truncation 버그 수정**: 토크나이저를 인코딩과 공유해서 청킹 입력이 512토큰으로 먼저
   잘렸고, 4,954토큰 기억이 2청크만 만들었습니다. 저장된 본문의 **42.9%만** 색인돼 있었습니다.
-  `tests/test_chunking.py`가 재발을 막습니다.
+  `tests/test_chunking.py`가 재발을 막습니다. 같은 결함이 **아티팩트 쪽에서 한 번 더** 들어옵니다 —
+  `save_pretrained` 가 truncation 을 `tokenizer.json` 에 박기 때문에, 로더가 청킹용 인스턴스의
+  truncation 을 **명시적으로 끕니다**(안 끄면 이 스토어에서 599청크가 337로 줄어듭니다).
+- **ONNX 아티팩트를 충실한 export 로 교체 + 전량 재색인** (2026-08-09): 기존 아티팩트는 풀링된
+  `sentence_embedding` 출력을 내면서 PyTorch 레퍼런스와 프로브 cosine 0.94 로 어긋나 있었습니다.
+  `scripts/export_model.py` 산출물(레퍼런스 대비 cosine 1.000)로 갈고 599청크를 다시 임베딩했더니
+  패러프레이즈 hybrid R@1 50.0%→60.0% · MRR 0.655→0.729, `eval_recall.py` hybrid R@5 94.9%→99.2%.
+  (20질의 기준이라 R@1 +10%p 는 2건입니다.)
 - **MARM 데이터 품질 결함 3종 교정** (아래).
 
 평가 하니스가 두 개인 이유: `eval_recall.py`는 문서에서 문장을 **그대로** 떼어 질의로 쓰므로
@@ -150,10 +157,11 @@ python3 -m venv .venv && .venv/bin/pip install -e .
 .venv/bin/python scripts/export_model.py
 ```
 
-⚠️ 이미 기억을 쌓은 스토어에서 이 export 를 다시 돌려 모델 디렉터리를 덮으면 안 됩니다.
-저장된 청크 벡터는 기존 아티팩트로 만들어진 것이고, `AGENT_MEMORY_MODEL_NAME` 이 그대로면
-`mem_recall` 의 모델 불일치 warning 도 뜨지 않습니다(2026-08-09 실측: 재export 아티팩트와
-기존 것의 프로브 cosine 0.936~0.951). 교체하려면 벡터를 전부 재색인하십시오.
+⚠️ 이미 기억을 쌓은 스토어의 모델 디렉터리를 **다른** 아티팩트로 덮으면 저장된 청크 벡터와
+어긋납니다. `AGENT_MEMORY_MODEL_NAME` 이 그대로면 `mem_recall` 의 모델 불일치 warning 도 뜨지
+않으므로 조용히 나빠집니다(2026-08-09 실측: 교체 전후 프로브 cosine 0.936~0.951). 교체할 때는
+청크를 전부 다시 임베딩하고, 실행 중인 MCP 서버를 재시작하십시오 — 서버는 모델을 프로세스에
+한 번만 올립니다.
 
 MCP 등록 (Claude Code):
 
