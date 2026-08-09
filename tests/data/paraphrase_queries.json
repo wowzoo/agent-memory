@@ -8,7 +8,16 @@
     "sometimes just an identifier. Lane weighting is tuned against these.",
     "Cases key on topic_match (a unique topic prefix) rather than an opaque id, so the",
     "fixture survives a store rebuild. Migration ids are deterministic anyway, but a",
-    "readable key also makes a failing case diagnosable."
+    "readable key also makes a failing case diagnosable.",
+    "query per memory, each anchored on a detail that distinguishes it from its",
+    "near-neighbours (same PR, same generation, same deck) so a miss means retrieval",
+    "failed rather than that the query was unanswerable.",
+    "72 cases: the original 20 plus 52 written against annotated cold memories, one",
+    "query per memory, each anchored on a detail that distinguishes it from its",
+    "near-neighbours (same PR, same generation, same deck) so a miss means retrieval",
+    "failed rather than that the query was unanswerable.",
+    "Cases 21+ were written immediately after reading each memory, so they inherit more",
+    "of its vocabulary than the original 20 do -- see README for the split scores."
   ],
   "cases": [
     {
@@ -90,6 +99,214 @@
     {
       "topic_match": "2026-07-09~14-초기-to-ide-2.2.x~2.3.7 + re",
       "query": "reviewer scope 문제가 나왔던 초기 세대 기록"
+    },
+    {
+      "topic_match": "2026-08-08~09 agent-memory 신설 — MARM 대체 ",
+      "query": "직접 만든 메모리 서버가 이전 것보다 검색이 얼마나 좋아졌나"
+    },
+    {
+      "topic_match": "export_model.py 검증 — 결함 3건 수정, 그리고 새 exp",
+      "query": "모델 뽑는 스크립트를 돌려봤더니 지금 쓰는 것과 다르게 나온 일"
+    },
+    {
+      "topic_match": "정정 — README:150 은 설치 절차이고 사실오류가 아니었다",
+      "query": "문서가 틀렸다고 판정했는데 알고 보니 아니었던 것"
+    },
+    {
+      "topic_match": "MCP 툴 5개 실세션 검증 통과 — hot 재색인·semantic 레인",
+      "query": "메모리 서버를 세션에 붙여서 툴이 실제로 응답하는지 확인한 것"
+    },
+    {
+      "topic_match": "2026-07-20~21 agent-memory-backend-resea",
+      "query": "메모리 저장할 DB 후보들 비교해서 뭘 쓸지 정한 조사"
+    },
+    {
+      "topic_match": "2026-08-04 marm 한국어 concept graph 실측 + 자",
+      "query": "한국어 문서에서 개체 추출이 조사 때문에 다 어긋난 측정"
+    },
+    {
+      "topic_match": "2026-08-04-marm-2.36.0-concept-graph-설치 ",
+      "query": "메모리 서버 올려서 개념 그래프 켰는데 안내대로 하면 안 되던 것"
+    },
+    {
+      "topic_match": "2026-08-04-한글손상-채널대정정 — 한글 음절 치환 손상의 채널을",
+      "query": "글자가 깨지는 게 화면에서만인지 파일까지인지 가린 조사"
+    },
+    {
+      "topic_match": "2026-07-31-harness-중립화 — 사용자 지적(\"Kiro CL",
+      "query": "대시보드가 특정 폴더만 찾도록 되어 있어서 막힌 작업을 놓친 문제"
+    },
+    {
+      "topic_match": "2026-07-31-세션종료 — `aidlc-dashboard/` 를 하",
+      "query": "대시보드 마무리하면서 확인 못 한 채 남겨둔 것들"
+    },
+    {
+      "topic_match": "2026-08-06-v2-2.5.37-tree-consolidation-",
+      "query": "세션 종료 이벤트가 대화 턴마다 남는 걸 발견한 세대"
+    },
+    {
+      "topic_match": "2026-08-05-kiro-harness-unification-clas",
+      "query": "classic CLI 에서 슬래시 명령이 인식되지 않은 이유"
+    },
+    {
+      "topic_match": "2026-08-06-W축-정정-fold-usage는-의도였다 (실런 검증",
+      "query": "빠진 배선이라고 판단했다가 일부러 뺀 거라고 정정한 훅"
+    },
+    {
+      "topic_match": "2026-08-07 v2-2.5.56-kiro 재적용 — 교집합 10건 ",
+      "query": "kiro 재적용에서 교집합이 10건까지 늘어난 세대"
+    },
+    {
+      "topic_match": "2026-08-07-claude-harness-2.5.56-reapply",
+      "query": "claude harness 쪽 재적용에서 교집합이 0에서 6으로 늘어난 것"
+    },
+    {
+      "topic_match": "2026-08-08-2.5.59-4tree-reapply-and-upst",
+      "query": "다른 AI 가 만들어둔 패치본을 검사해보고 통째로 버린 세대"
+    },
+    {
+      "topic_match": "2026-08-06-v2-2.5.43-generation-kiro+cla",
+      "query": "순정 IDE 와 CLI 중 어느 쪽을 base 로 쓸지 판단한 세대"
+    },
+    {
+      "topic_match": "2026-07-30-v2-2.5.26-패치-17세션차: v2-2.5.26",
+      "query": "금지 명령 목록을 IDE 쪽 표기법으로 옮긴 세대"
+    },
+    {
+      "topic_match": "2026-08-02-18세션차-v2-2.5.33-두트리-완성 커밋 d25",
+      "query": "상류가 IDE 전용 배포를 시작해서 우리 작업이 필요 없어진 세대"
+    },
+    {
+      "topic_match": "2026-08-04-v2-2.5.36-3트리-완성-및-워크숍-프롬프트-실",
+      "query": "우리가 쓴 언어 규칙 문서에서 사실 아닌 주장들이 걸린 것"
+    },
+    {
+      "topic_match": "2026-08-08-v2-2.5.57-opencode-신설-4트리완결 —",
+      "query": "opencode 셸에 처음 패치를 얹어 네 트리를 완결한 작업"
+    },
+    {
+      "topic_match": "2026-08-04-잔여미커밋전량커밋-21세션차 — aidlc-v2-pa",
+      "query": "미커밋 파일 삼천여 개를 성격별로 갈라 커밋한 세션"
+    },
+    {
+      "topic_match": "2026-08-04 aidlc-v2-patch 22세션차 — v1 정본 ",
+      "query": "v1 을 직접 읽어보고 이전 결론을 여러 건 바꾼 세션"
+    },
+    {
+      "topic_match": "2026-07-22 stock v2-2.5.2 도착 → 패치 재적용 정밀",
+      "query": "2.5.2 가 왔을 때 재적용은 안 하고 충돌 지점만 분석한 것"
+    },
+    {
+      "topic_match": "2026-08-02-워크숍-배포본-harness3종-전환+poc-lab-",
+      "query": "워크숍에서 하루에 돌 수 있게 단계를 줄인 scope 만든 것"
+    },
+    {
+      "topic_match": "2026-08-02-워크숍-실런검증-Brownfield오판정3건+kiro",
+      "query": "셋업 스크립트 파일 하나 때문에 Greenfield 가 Brownfield 로 뒤집힌 문제"
+    },
+    {
+      "topic_match": "2026-08-05-word-book-claude 실런3 분석 + tra",
+      "query": "비용 집계가 실제보다 크게 잡히던 원인 찾은 것"
+    },
+    {
+      "topic_match": "2026-08-02-실런2-비용측정-word-book-claude Con",
+      "query": "12 스테이지 완주한 실런의 비용이 얼마였고 세션별 생산성 차이가 어땠나"
+    },
+    {
+      "topic_match": "2026-08-01 — claude harness 트랙 세션(v2-2.5",
+      "query": "대기 시간 계산이 안 된다고 했다가 되게 만든 세션"
+    },
+    {
+      "topic_match": "2026-07-30-롯데온-MO-병렬개발-분석+덱: 롯데온 실런 산출물(",
+      "query": "롯데온 실런을 유닛 아홉 개로 쪼갠 구조를 분석하고 덱까지 만든 것"
+    },
+    {
+      "topic_match": "2026-07-24 후속2 — 롯데온 전달본 정비+SSOT 배포+사실 정",
+      "query": "롯데온 전달본 안내서를 리뷰해서 실행 안 되는 부분 고친 것"
+    },
+    {
+      "topic_match": "2026-07-24 후속 — 롯데온 시딩 마무리 3건. (1) knowl",
+      "query": "롯데온 시딩 마무리하면서 지식 파일과 규칙 파일 성격을 구분한 것"
+    },
+    {
+      "topic_match": "2026-08-04-v1v2-ppt-deck-v1-vs-v2 PPT 덱 ",
+      "query": "v1 과 v2 를 비교하는 덱 15장 만든 작업"
+    },
+    {
+      "topic_match": "2026-08-04-v1v2-painpoint-review-v1 pain",
+      "query": "슬랙에서 모은 v1 불만 아홉 절을 v2 기준으로 판정한 문서"
+    },
+    {
+      "topic_match": "2026-07-26 — v2-to-kiro-ide 12세션차: log-s",
+      "query": "위임 훅이 한 번도 발화하지 않은 원인을 찾아낸 세션"
+    },
+    {
+      "topic_match": "2026-07-16~18-patch세대-2.4.5-2.4.0-2.3.10",
+      "query": "2.4.5 세대를 만들면서 adapter 만 hunk 병합한 기록"
+    },
+    {
+      "topic_match": "2026-08-02-sensor-failure-taxonomy — v2-",
+      "query": "센서 실패를 원인별로 분류한 분석"
+    },
+    {
+      "topic_match": "2026-08-05-PR712 리뷰 대응 조사 + plugin skill",
+      "query": "requires_stage 가 하드 게이트가 아니라는 걸 확인한 리뷰 대응"
+    },
+    {
+      "topic_match": "2026-08-05 순정-2.5.37-4harness-실런 — 25세션차",
+      "query": "패치하지 않은 순정본을 네 harness 에 그대로 깔고 돌려본 세션"
+    },
+    {
+      "topic_match": "2026-08-07-conversation-language-enforce",
+      "query": "대화 언어 규칙에 엔진 강제력이 전혀 없다고 판정한 것"
+    },
+    {
+      "topic_match": "2026-07-23-3세션차-stock2.5.7+IDE1.0.203-ho",
+      "query": "구형 .kiro.hook 이 1.0.x 에서 완전히 죽은 것을 probe 로 확인한 실런"
+    },
+    {
+      "topic_match": "2026-07-25 10세션차-후반 — PR #654(#495 rules",
+      "query": "본문이 주입된 파일을 conductor 가 또 읽는지 확인한 probe"
+    },
+    {
+      "topic_match": "2026-07-29-16세션차-PR653-push완료-3트리정리 — (1",
+      "query": "인계받은 테스트 통과 수치가 전량 실행이 아니었다고 대정정한 세션"
+    },
+    {
+      "topic_match": "2026-08-05 아카이브-self-answer-결함-관측연대기 — §",
+      "query": "자기답변 결함의 안전장치를 세 층위로 갈라 분석한 것"
+    },
+    {
+      "topic_match": "2026-07-26-adversarial-verification-meth",
+      "query": "서브에이전트한테 내 findings 를 반박하라고 시킨 방법"
+    },
+    {
+      "topic_match": "2026-08-06-aidlc-v2-덱-3층-분리-계획 (사용자 계획, ",
+      "query": "덱을 세 층으로 나누자는 계획만 잡고 진행 중이던 것"
+    },
+    {
+      "topic_match": "2026-08-06-aidlc-v2-3층-분리-완료 (60 → 67장)",
+      "query": "덱 3부 분리를 끝내서 결국 몇 장이 됐지"
+    },
+    {
+      "topic_match": "2026-07-13~14 v2-ppt in-action 통합 격자 채택(",
+      "query": "PowerPoint 애니메이션을 XML 로 직접 밀어넣은 작업"
+    },
+    {
+      "topic_match": "2026-07-16 v2-ppt aidlc-primer 자매덱 신설(매니",
+      "query": "매니저급 40분짜리 자매 덱을 새로 만든 것"
+    },
+    {
+      "topic_match": "2026-07-21(후속3) v2-ppt aidlc-primer HARN",
+      "query": "harness 섹션을 페이지별로 지적받아 고친 리뷰"
+    },
+    {
+      "topic_match": "2026-07-21(후속2) v2-ppt 도구 예시 표기 통일. 사용자 ",
+      "query": "덱에서 Cursor 랑 Antigravity 를 다른 도구 이름으로 바꾼 것"
+    },
+    {
+      "topic_match": "2026-07-21 §5 메모리 hot/cold 분리 정책 확정 + 파일",
+      "query": "메모리를 전부 MARM 으로 옮기지 않고 hot cold 로 나누기로 정한 근거"
     }
   ]
 }
