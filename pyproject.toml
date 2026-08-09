@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=77.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-memory"
+version = "0.1.0"
+description = "Korean-first agent memory MCP server. Local SQLite, Kiwi morpheme lexical search, Korean-tuned embeddings."
+readme = "README.md"
+requires-python = ">=3.11"
+
+# Deliberately small. MARM needed fastapi/uvicorn/spacy/fastembed/apscheduler for
+# an HTTP console, concept NER and a scheduler we do not build; a STDIO MCP server
+# with local retrieval needs none of them.
+dependencies = [
+    "mcp>=1.26.0,<2.0.0",
+    "onnxruntime>=1.20",   # runs the Korean embedding model; no torch needed
+    "tokenizers>=0.21",    # XLM-R tokenizer for the same model
+    "kiwipiepy>=0.20",     # Korean morphological analysis for the lexical lane
+    "numpy>=2.0",
+]
+
+[project.optional-dependencies]
+# Only needed to re-export the ONNX model from HuggingFace weights (see
+# scripts/export_model.py). Not required to run the server.
+export = ["torch>=2.4", "transformers>=4.44", "optimum[exporters]>=1.23"]
+
+[project.scripts]
+agent-memory = "agent_memory.server:main"
+agent-memory-migrate = "agent_memory.migrate:main"
+
+[tool.setuptools.packages.find]
+include = ["agent_memory*"]

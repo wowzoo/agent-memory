@@ -1,0 +1,95 @@
+{
+  "_comment": [
+    "Hand-authored paraphrase queries over the migrated MARM store.",
+    "The known-item eval (scripts/eval_recall.py) quotes a sentence verbatim out of",
+    "the target memory, handing BM25 a perfect lexical overlap it never gets in",
+    "practice -- it is a regression harness, not a tuning harness. These queries are",
+    "written the way the user actually asks: different wording, partial recollection,",
+    "sometimes just an identifier. Lane weighting is tuned against these.",
+    "Cases key on topic_match (a unique topic prefix) rather than an opaque id, so the",
+    "fixture survives a store rebuild. Migration ids are deterministic anyway, but a",
+    "readable key also makes a failing case diagnosable."
+  ],
+  "cases": [
+    {
+      "topic_match": "2026-08-06-sensor와-hook은-다른-층 (소스+fixtur",
+      "query": "AI-DLC 센서랑 Kiro 훅이 같은 거였나 아니었나"
+    },
+    {
+      "topic_match": "2026-07-21 메모리 갱신 정책 확정. 사용자 결정: 별 한정 없는",
+      "query": "메모리 갱신하라고 하면 어디까지 갱신하기로 정했지"
+    },
+    {
+      "topic_match": "2026-07-23-MARM-graph-도입판단 — concept·cod",
+      "query": "그래프 기능은 결국 설치하기로 했었나"
+    },
+    {
+      "topic_match": "2026-07-31-aidlc-dashboard-신설 — 모노레포 5번째",
+      "query": "대시보드를 처음부터 새로 만든 작업"
+    },
+    {
+      "topic_match": "2026-07-25-upstream-pr-653-landed-첫 upst",
+      "query": "상류에 PR 처음 올려서 통과된 게 언제지"
+    },
+    {
+      "topic_match": "2026-07-28-task14-claim-sources-오탐-로컬수정 ",
+      "query": "665 결함은 왜 업스트림에 안 올리고 우리 쪽에서만 고쳤나"
+    },
+    {
+      "topic_match": "2026-07-28-cli-v3-unified-harness-실증 — 1",
+      "query": "CLI v3 가 IDE 와 동일한 하니스라는 걸 어떻게 입증했나"
+    },
+    {
+      "topic_match": "2026-07-27-v2-2.5.11-patch-generation — ",
+      "query": "2.5.11 세대는 어떤 방식으로 생성했지"
+    },
+    {
+      "topic_match": "2026-07-23-v2toide-two-trees-created: ki",
+      "query": "IDE 용 배포 트리 두 벌 만든 작업"
+    },
+    {
+      "topic_match": "2026-07-23-v2-to-kiro-ide-PR착수계획 — #543/",
+      "query": "543 PR 올리는 계획만 세우고 실제 착수는 안 한 건"
+    },
+    {
+      "topic_match": "2026-07-12 v2-ppt in-action Construction",
+      "query": "발표 자료에서 Construction 슬라이드 장수를 줄인 작업"
+    },
+    {
+      "topic_match": "2026-07-26-v2ppt-cta-4장-커밋-및-QR-회색선-판정-정",
+      "query": "덱 맨 뒤에 CTA 넣은 커밋하고 QR 코드 선 문제"
+    },
+    {
+      "topic_match": "2026-08-06-v2-2.5.45-patch-two-trees — A",
+      "query": "2.5.45 재적용했을 때 트리가 몇 개였고 doctor 결과는"
+    },
+    {
+      "topic_match": "2026-07-22 aidlc-primer 리뷰 완료 처리 + prime",
+      "query": "primer 리뷰를 완료 처리한 건"
+    },
+    {
+      "topic_match": "2026-08-05 아카이브-16~19세션차-raw연대기 — §8 hot",
+      "query": "세션 기록을 hot cold 로 나눠서 옮긴 작업"
+    },
+    {
+      "topic_match": "2026-08-02-v2-2.5.33-19세션차-4트리완성+18세션차오판",
+      "query": "2.5.33 에서 앞선 세션의 판단을 뒤집은 게 있었지"
+    },
+    {
+      "topic_match": "2026-07-24-v2-to-kiro-ide-dist-harness 4",
+      "query": "포크에서 배포 하니스 방식으로 전환한 세션"
+    },
+    {
+      "topic_match": "2026-07-23-aidlc-v2-deck-and-ai-primer-t",
+      "query": "새 덱을 조립했는데 커밋은 하나도 안 한 세션"
+    },
+    {
+      "topic_match": "2026-07-21 v2-ppt aidlc-primer 로드맵 ↔ in-",
+      "query": "자매 덱 두 개의 로드맵을 서로 맞춘 작업"
+    },
+    {
+      "topic_match": "2026-07-09~14-초기-to-ide-2.2.x~2.3.7 + re",
+      "query": "reviewer scope 문제가 나왔던 초기 세대 기록"
+    }
+  ]
+}
