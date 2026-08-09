@@ -163,6 +163,38 @@ def test_editing_one_section_keeps_the_others_annotations(store):
     con.close()
 
 
+FRONTMATTER = (
+    "---\nname: a\nmetadata:\n  modified: 2026-08-09T10:49:40.780Z\n---\n\n"
+    "# 첫 번째 주제\n\n한국어 검색이 안 되는 문제를 고쳤다.\n"
+)
+FRONTMATTER_TOUCHED = FRONTMATTER.replace("10:49:40.780Z", "11:02:11.912Z")
+
+
+def test_frontmatter_is_not_part_of_the_section(store):
+    """`modified:` is rewritten whenever the file is touched. With it in the body, the
+    section hashed differently every time and took its annotations down with it."""
+    hot_dir, db, hot, _ = store
+    (hot_dir / "a.md").write_text(FRONTMATTER, encoding="utf-8")
+    con = db.connect()
+    hot.sync(con)
+
+    from agent_memory import graph
+
+    memory_id = section_id(con, "첫 번째 주제")
+    graph.attach(con, memory_id, ["엔티티"], [])
+    body = con.execute(
+        "SELECT content FROM memories WHERE id = ?", (memory_id,)
+    ).fetchone()["content"]
+    assert "modified" not in body and "name: a" not in body
+
+    os.utime(hot_dir / "a.md", (0, 0))
+    (hot_dir / "a.md").write_text(FRONTMATTER_TOUCHED, encoding="utf-8")
+    assert hot.sync(con)["kept"] == 1
+    assert section_id(con, "첫 번째 주제") == memory_id
+    assert annotated(con, memory_id)
+    con.close()
+
+
 def test_inserting_a_section_does_not_renumber_the_rest(store):
     """Position is not part of the id: adding a section above must not invalidate the
     sections below it, which is what an index-keyed id did."""

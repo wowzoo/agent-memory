@@ -34,6 +34,13 @@ _SLUG_CHARS = re.compile(r"[/_]")
 # Split on markdown headings up to h3; deeper headings stay inside their section.
 _HEADING = re.compile(r"^(#{1,3})\s+(.+?)\s*$", re.MULTILINE)
 
+# YAML frontmatter is metadata, not memory. It is stripped before sectioning for two
+# reasons: `originSessionId` hex and ISO timestamps are pure noise in the lexical
+# index, and `modified:` is rewritten on every edit -- with it in the body, the first
+# section of a file hashed differently every time the file was touched, so its graph
+# annotations died even when nothing it says had changed.
+_FRONTMATTER = re.compile(r"\A---\r?\n.*?\r?\n---[ \t]*\r?\n", re.DOTALL)
+
 
 def default_hot_dir() -> Path | None:
     slug = _SLUG_CHARS.sub("-", str(Path(os.getcwd()).resolve()))
@@ -62,6 +69,7 @@ def _sections(text: str, fallback_topic: str) -> list[tuple[str, str]]:
     Sectioning rather than whole-file indexing because these files are long -- 61KB
     at the top end -- and a single vector over 20,000 words locates nothing.
     """
+    text = _FRONTMATTER.sub("", text)
     matches = list(_HEADING.finditer(text))
     if not matches:
         stripped = text.strip()
