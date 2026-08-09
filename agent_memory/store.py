@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 
 import numpy as np
 
-from . import config, db, embedding, graph, hot, korean
+from . import config, db, embedding, graph, hot, korean, rerank
 
 _DETAIL_CHARS = {1: 200, 2: 500}
 
@@ -243,10 +243,40 @@ def _reserve_tier_slots(
             continue
         other = [kv for kv in window if _tier_of(rows, kv[0]) != tier_name]
         drop = {id(kv) for kv in other[-need:]}
+        # Appended, not re-sorted by score. Promoted rows come from beyond the window
+        # so their scores are already the lowest in it -- sorting put them here anyway.
+        # Sorting also made this function depend on scores being one comparable scale,
+        # which reranking breaks: it orders the head by a cross-encoder, and re-sorting
+        # by fusion score threw that order away (measured: eval_recall R@5 99.2% -> 49.2%).
         window = [kv for kv in window if id(kv) not in drop] + waiting[:need]
-        window.sort(key=lambda kv: -kv[1])
         rest = [kv for kv in rest if kv not in waiting[:need]]
     return window + rest
+
+
+def _rerank(query: str, ranked: list, rows: dict, depth: int) -> tuple[list, bool]:
+    """Reorder the top `depth` by cross-encoder score, leaving the tail alone.
+
+    Replaces the fused order rather than blending with it -- measured: blending the
+    Korean reranker in as an RRF lane is strictly worse than letting it decide
+    (w=0.5: R@1 79.2% vs 91.7% when it replaces). The multilingual base needed a
+    blend; this one does not, which also means there is no weight to tune.
+
+    A missing export is not fatal: the caller asked for better ranking, not for the
+    request to fail, so a base-ordered answer beats no answer.
+    """
+    if depth <= 0 or len(ranked) < 2 or not rerank.available():
+        return ranked, False
+    head = ranked[:depth]
+    logits = rerank.scores(
+        query, [f"{rows[mid]['topic']}\n{rows[mid]['content']}" for mid, _ in head]
+    )
+    # Only the order changes; every row keeps its fusion score. Substituting the logit
+    # was tried and is wrong: the score becomes two scales in one response, and any
+    # downstream step that compares scores then mixes them (it did -- see
+    # _reserve_tier_slots). `reranked` in the response is what tells a caller that the
+    # head is ordered by something other than `score`.
+    order = sorted(range(len(head)), key=lambda i: (-logits[i], head[i][0]))
+    return [head[i] for i in order] + ranked[depth:], True
 
 
 def _tier_of(rows: dict, memory_id: str) -> str:
@@ -276,6 +306,7 @@ def recall(
     detail: int = 1,
     mode: str = "hybrid",
     tier: str | None = None,
+    rerank: bool | None = None,
 ) -> dict:
     query = query.strip()
     if not query:
@@ -338,6 +369,15 @@ def recall(
         # depends on which lane happened to see the memory first.
         key=lambda kv: (-final_score(*kv), kv[0]),
     )
+
+    reranked = False
+    # `rerank` here is the caller's flag, which shadows the module of the same name;
+    # `_rerank` below is where the module is used.
+    if config.RERANK_ENABLED if rerank is None else rerank:
+        ranked, reranked = _rerank(query, ranked, rows, config.RERANK_DEPTH)
+
+    # After reranking, not before: the slots exist so neither tier disappears from
+    # what the caller sees, and the reranked order is what they see.
     ordered = (
         _reserve_tier_slots(ranked, rows, limit, config.MIN_TIER_SLOTS)
         if tier is None
@@ -373,6 +413,8 @@ def recall(
         "results": results,
         "results_count": len(results),
     }
+    if reranked:
+        response["reranked"] = config.RERANK_DEPTH
     if warning:
         response["warning"] = warning
     return response

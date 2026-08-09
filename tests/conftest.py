@@ -16,9 +16,19 @@ import pytest
 from agent_memory import config
 
 REAL_MODEL_DIR = config.MODEL_DIR
+REAL_RERANK_MODEL_DIR = config.RERANK_MODEL_DIR
 
 
 @pytest.fixture
 def real_model_dir(monkeypatch):
     monkeypatch.setenv("AGENT_MEMORY_MODEL_DIR", str(REAL_MODEL_DIR))
     return REAL_MODEL_DIR
+
+
+@pytest.fixture
+def real_rerank_dir():
+    """Where the reranker export lives, for the one test that wants the real thing.
+    Reading it off `config` inside a test does not work -- the store fixtures reload
+    that module with AGENT_MEMORY_HOME pointed at a tmp dir, so by then the attribute
+    is a tmp path and the test silently skips itself."""
+    return REAL_RERANK_MODEL_DIR

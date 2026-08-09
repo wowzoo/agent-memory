@@ -135,6 +135,7 @@ def mem_recall(
     detail: Literal[1, 2, 3] = 1,
     mode: Literal["hybrid", "lexical", "semantic"] = "hybrid",
     tier: Optional[Literal["hot", "cold"]] = None,
+    rerank: Optional[bool] = None,
 ) -> dict[str, Any]:
     """Search memories by meaning and keyword. Korean queries work as well as English.
 
@@ -159,16 +160,25 @@ def mem_recall(
     - detail: 1 = ~200 chars, 2 = ~500 chars, 3 = full content
     - mode: 'hybrid' (default) | 'lexical' (BM25 only) | 'semantic' (vectors only)
     - tier: 'hot' or 'cold' to restrict; omit to search both
+    - rerank: True to rescore the top 10 with a Korean cross-encoder before
+      answering. Measured on 72 paraphrase queries: R@1 72%→92%, R@5 94%→99%.
+      It costs about 3 seconds, so it is off unless asked for. Use it for "what
+      happened with X" questions, or when a first search came back vague. Leave it
+      off for a quick lookup, and also when hunting a phrase from deep inside a
+      long memory: each candidate is judged on its first ~512 tokens, so evidence
+      past that is invisible (on verbatim mid-document queries R@5 drops to 79%).
 
     Returns: status, mode, ranked results (each with tier, score, the lanes that
     found it, and `path` for hot results), results_count. A `warning` field appears
     if the stored vectors were built by a different embedding model, in which case
-    only the lexical lane runs.
+    only the lexical lane runs. With reranking, `reranked` gives the depth rescored —
+    read it as "the top N are ordered by the cross-encoder, not by `score`", since
+    every row keeps its fusion score.
     """
     with db.connect() as con:
         return store.recall(
             con, query, limit=limit, session=session, project=project,
-            detail=detail, mode=mode, tier=tier,
+            detail=detail, mode=mode, tier=tier, rerank=rerank,
         )
 
 

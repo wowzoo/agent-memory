@@ -41,6 +41,11 @@ def main() -> None:
         default=None,
         help="restrict recall to one tier (default: both, interleaved)",
     )
+    parser.add_argument(
+        "--rerank",
+        action="store_true",
+        help="rescore the fused head with the cross-encoder (hybrid only, ~3 s/query)",
+    )
     args = parser.parse_args()
 
     cases = json.loads(FIXTURE.read_text())["cases"]
@@ -58,11 +63,15 @@ def main() -> None:
           + (f", tier={args.tier}" if args.tier else ", both tiers") + "\n")
 
     per_mode = {}
-    for mode in ("lexical", "semantic", "hybrid"):
+    # With --rerank only hybrid is measured: the reranker reorders whatever the lanes
+    # fused, so pairing it with a single-lane baseline measures the baseline, not it.
+    modes = ("hybrid",) if args.rerank else ("lexical", "semantic", "hybrid")
+    for mode in modes:
         ranks, misses = [], []
         for memory_id, query in resolved:
             results = store.recall(
-                con, query, limit=DEPTH, detail=1, mode=mode, tier=args.tier
+                con, query, limit=DEPTH, detail=1, mode=mode, tier=args.tier,
+                rerank=args.rerank or None,
             )["results"]
             ids = [r["id"] for r in results]
             rank = ids.index(memory_id) + 1 if memory_id in ids else DEPTH + 1
@@ -78,6 +87,10 @@ def main() -> None:
         if args.show_misses and misses:
             for query, rank in misses:
                 print(f"      rank {rank:>3}  {query}")
+
+    if args.rerank:
+        con.close()
+        return
 
     # Does fusion actually beat its best single lane, case by case?
     best_single = "lexical" if sum(1/r for r in per_mode["lexical"]) >= sum(

@@ -181,6 +181,76 @@ sem 45) 입니다. 두 번째·세 번째는 두 레인 다 약한 이웃 모호
 "IDE 용 배포 트리"(10위) · "2.5.33 판단 뒤집기"(14위) · "세션 종료 이벤트"(6위)이고, 마지막 것이
 그래프 레인이 5위 밖으로 밀어낸 1건입니다(대신 다른 2건이 5위 안으로 들어왔습니다).
 
+### 리랭커는 값을 하지만 3초를 받습니다 — 그래서 옵트인입니다 (측정 결과)
+
+위 절이 "리랭커가 있어야 살아난다"로 끝나서 실제로 재봤습니다. 먼저 **상한**입니다: 리랭커는
+융합된 후보의 순서만 바꾸므로 베이스 레인이 못 데려온 기억을 만들어낼 수 없고, 따라서 값의
+천장은 "정답이 이미 top N 안에 있는 비율"에 고정됩니다. 이걸 먼저 재는 게 크로스인코더를
+export 해놓고 3점밖에 없었다는 걸 알게 되는 것보다 쌉니다 (`scripts/experiment_rerank.py`).
+
+| 후보 깊이 | 정답이 풀 안 | = 완벽한 리랭커의 R@1/R@5 | 현재 미스 중 사정거리 |
+|---|---|---|---|
+| 5 | 68/72 | 94.4% | 0/4 |
+| **10** | 71/72 | **98.6%** | 3/4 |
+| 20 | 72/72 | 100% | 4/4 |
+
+상한이 크므로 모델을 재봤습니다. 두 후보를 **같은 방식으로 export** 했습니다
+(`scripts/export_reranker.py`) — BAAI 는 ONNX 를 이미 배포하고 한국어 파인튜닝본은 안 하는데,
+한쪽만 기성품을 쓰면 모델 차이가 아니라 export 차이를 재게 됩니다. 아래는 전부 cold 72질의,
+**한 상태에서 한 번에**, top 10 재점수:
+
+| 설정 | 지연/질의 | R@1 | R@5 | MRR |
+|---|---|---|---|---|
+| 베이스 (리랭커 없음) | ~10 ms | 72.2% | 94.4% | 0.819 |
+| bge-reranker-base, 교체 | 2.4 s | 63.9% | 93.1% | 0.769 |
+| bge-reranker-base, RRF 융합 w=1.0 | 2.4 s | 75.0% | 95.8% | 0.840 |
+| ko-reranker (fp32), 교체 | 7.9 s | 90.3% | 98.6% | 0.935 |
+| **ko-reranker (int8), 교체 (채택)** | **3.0 s** | **91.7%** | **98.6%** | **0.943** |
+
+두 계층으로 재도 같습니다 — **R@1 91.7% · R@5 98.6% · MRR 0.947** (`eval_paraphrase.py --rerank`, 프로덕션 경로가 위 실험 하니스와 정확히 일치합니다).
+
+- **한국어 파인튜닝본이 갈림길입니다.** 다국어 `bge-reranker-base`는 융합 레인으로 섞어야 겨우
+  이기고(+2건), 혼자 순서를 정하게 하면 오히려 베이스보다 나쁩니다. `Dongjin-kr/ko-reranker`는
+  **융합 없이 교체만으로** 이깁니다 — 그래서 **튜닝할 가중치가 없습니다**(w를 올리면 교체와
+  수렴합니다). 72건 위에서 노브를 스윕해 얻은 이득이 아니라는 뜻이고, β 를 기각할 때 걸렸던
+  과적합 위험이 여기엔 없습니다.
+- **R@5 98.6% = 71/72 는 depth 10 상한 그 자체입니다.** 후보 안에 있는 답을 하나만 빼고 전부
+  5칸에 넣습니다. 남은 1건은 depth 20 이면 사정거리인데 지연이 두 배가 됩니다.
+- **int8 동적 양자화가 공짜입니다** — 2.6배 빠르고 품질은 안 내려갑니다(R@1 +1건은 노이즈로
+  봅니다). 산출물도 2.1GB → 552MB 로 줄어듭니다. 반면 base 모델에서는 int8 이 품질을 깎았습니다.
+- 되돌린 레버 둘: 본문을 256토큰으로 줄이면 지연은 반이 되지만 이득 대부분이 사라집니다
+  (base 모델 기준 R@5 95.8%→94.4%). 모든 페어가 512토큰을 꽉 채우므로 잘라서 얻을 여지가 없습니다.
+
+**그래서 기본값은 off 입니다.** 300 ms/후보 × 10 = 3초는 레인만 돌 때의 10 ms 와 300배 차이입니다.
+`mem_recall(rerank=True)` 로 질문마다 고르거나 `AGENT_MEMORY_RERANK=1` 로 프로세스 전체를 켭니다.
+모든 행은 융합 점수를 그대로 들고 있고, 응답의 `reranked` 가 "상위 N 은 `score` 가 아니라
+크로스인코더 순서다"를 알립니다.
+
+⚠️ **리랭커가 이기는 질문의 종류가 정해져 있습니다.** `eval_recall.py` 를 리랭커를 켜고 돌리면
+**R@1 84.1%→55.3% · R@5 99.2%→79.5%** 로 크게 나빠집니다. 이건 위 결함이 아니라 성질입니다 —
+그 fixture 는 기억 본문의 **중간 문장을 그대로** 질의로 쓰고, 리랭커는 후보 하나를
+`토픽 + 본문` 512토큰 한 번으로만 봅니다. 실제로 **132건 중 72건의 질의 문장이 그 창 밖**에
+있어서, 리랭커는 정답의 증거를 아예 보지 못한 채 판단합니다. 반면 패러프레이즈 질의는 "그 기억이
+무엇에 대한 것이냐"를 묻기 때문에 앞부분만 봐도 답이 됩니다. 그래서 **"무슨 일이 있었지" 류에는
+켜고, "본문 깊숙한 문구를 그대로 찾기"에는 끄는 게 맞습니다.** 창 안에 넣으려면 청크별로 재점수해
+최대를 쓰는 방법이 있는데 후보당 4~5회 추론이라 지연이 다시 네 배가 됩니다 — 안 했습니다.
+
+🔴 **한 번 크게 틀렸던 자리입니다.** 처음에는 리랭킹된 행의 `score` 를 크로스인코더 로짓으로
+갈아끼웠습니다 — 순서와 점수가 어긋나 보이는 출력을 피하려던 것이었는데, 그러면 한 응답에 두
+척도가 섞이고 **점수를 비교하는 하류 단계가 그 둘을 섞습니다.** `_reserve_tier_slots` 가
+윈도를 점수로 재정렬하고 있어서, 예비 슬롯으로 올라온 행(융합 점수 0.05)이 리랭킹된 head 전체
+(로짓 −1 ~ −10)를 뛰어넘었습니다. cold-only 는 예비 슬롯을 안 쓰기 때문에 멀쩡했고, 그래서
+**두 계층에서만** 무너졌습니다 — `eval_recall` R@5 **99.2% → 49.2%**, 두 계층 패러프레이즈
+R@5 93.1% → 75.0%. cold-only 만 보고 넘어갔으면 그대로 나갔을 결함입니다.
+
+고친 방향은 두 군데입니다. `_rerank` 는 **순서만** 바꾸고 점수는 건드리지 않습니다. 그리고
+`_reserve_tier_slots` 는 점수로 재정렬하지 않고 올라온 행을 윈도 끝에 붙입니다 — 올라온 행은
+정의상 윈도 밖에서 온 것이라 융합 경로에서는 정렬 결과와 같고(오프 경로 수치가 비트 동일함을
+확인했습니다), 대신 "점수가 하나의 비교 가능한 척도"라는 전제가 사라집니다.
+
+⚠️ 위 베이스 행(94.4%)이 이 문서 첫 표(95.8%)와 다른 이유는 아래 IDF 절입니다. **비교는 같은
+상태에서 잰 이 표 안에서만** 하십시오.
+
 ### 개념 그래프는 R@5 를 사는 값으로만 recall 에 섞습니다 (측정 결과)
 
 **결론이 바뀐 자리입니다.** 세 번의 측정 동안 "섞지 않는다"였고, 근거는 그래프 레인이 R@1 과
@@ -300,6 +370,26 @@ python3 -m venv .venv && .venv/bin/pip install -e .
 청크를 전부 다시 임베딩하고, 실행 중인 MCP 서버를 재시작하십시오 — 서버는 모델을 프로세스에
 한 번만 올립니다.
 
+리랭커는 선택입니다. 안 만들면 `rerank=True` 를 줘도 조용히 베이스 순서로 답합니다 —
+호출자가 원한 건 더 나은 순서이고, 요청이 실패하는 것보다 베이스 순서라도 답하는 편이 낫습니다.
+
+```bash
+.venv/bin/python scripts/export_reranker.py \
+    --repo Dongjin-kr/ko-reranker --out ~/.agent-memory/models/ko-reranker
+.venv/bin/python - <<'EOF'
+from pathlib import Path
+from onnxruntime.quantization import quantize_dynamic, QuantType
+src = Path.home() / ".agent-memory/models/ko-reranker"
+dst = Path.home() / ".agent-memory/models/ko-reranker-int8"
+dst.mkdir(exist_ok=True)
+for f in ("tokenizer.json", "tokenizer_config.json", "special_tokens_map.json", "config.json"):
+    (dst / f).write_bytes((src / f).read_bytes())
+quantize_dynamic(src / "model.onnx", dst / "model.onnx", weight_type=QuantType.QInt8)
+EOF
+```
+
+fp32 export(2.1GB)는 양자화의 입력으로만 필요하니 int8(552MB)을 확인한 뒤 지워도 됩니다.
+
 MCP 등록 (Claude Code):
 
 ```bash
@@ -391,9 +481,10 @@ python scripts/annotate.py batch.json
 
 - **`mem_write(content, session=, topic=, project=, entities=, relations=)`** — 기억 저장.
   결정·근거·결과를 남기고 지나가는 잡담은 남기지 않습니다.
-- **`mem_recall(query, limit=, session=, project=, detail=, mode=, tier=)`** — 렉시컬(Kiwi+BM25) ·
-  시맨틱(청크 임베딩) · 개념 그래프 co-citation(hybrid 에서만, 절반 가중) 세 레인을 RRF로 융합.
-  hot/cold를 함께 검색해 구분 반환합니다.
+- **`mem_recall(query, limit=, session=, project=, detail=, mode=, tier=, rerank=)`** —
+  렉시컬(Kiwi+BM25) · 시맨틱(청크 임베딩) · 개념 그래프 co-citation(hybrid 에서만, 절반 가중)
+  세 레인을 RRF로 융합. hot/cold를 함께 검색해 구분 반환합니다. `rerank=True`는 상위 10건을
+  한국어 크로스인코더로 다시 매깁니다 — R@1 72%→92%, 대가는 3초입니다.
 - **`mem_sessions(session=)`** — 세션 목록 또는 한 세션의 항목 목록.
 - **`mem_annotate(memory_id, entities=, relations=)`** — 기존 기억에 개념 그래프 부착.
 - **`mem_graph(entity=, hops=, predicate=)`** — 그래프 순회 또는 전체 형태 조회.
@@ -414,6 +505,9 @@ python scripts/annotate.py batch.json
 | `AGENT_MEMORY_TOPIC_WEIGHT` / `_BODY_WEIGHT` | `3.0` / `1.0` (bm25 컬럼 가중) |
 | `AGENT_MEMORY_RRF_K` / `_CANDIDATE_POOL` | `10` / `50` (k 는 이 코퍼스 크기에 맞춰 60에서 내림) |
 | `AGENT_MEMORY_GRAPH_LANE_WEIGHT` / `_GRAPH_LANE_SEEDS` | `0.5` / `3` (`0`이면 그래프 레인 끔) |
+| `AGENT_MEMORY_RERANK` | `0` (`1`이면 모든 recall 을 리랭킹 — 질의당 3초) |
+| `AGENT_MEMORY_RERANK_MODEL_DIR` | `$HOME/models/ko-reranker-int8` |
+| `AGENT_MEMORY_RERANK_DEPTH` / `_MAX_TOKENS` | `10` / `512` (깊이 20은 상한 100%, 지연 두 배) |
 | `AGENT_MEMORY_HOT_PATHS` | 현재 프로젝트의 Claude Code memory 디렉터리 |
 | `AGENT_MEMORY_HOT` | `1` (`0`이면 hot 미러링 끔) |
 | `AGENT_MEMORY_MIN_TIER_SLOTS` | `2` (`0`이면 순수 관련도 정렬) |
@@ -429,13 +523,15 @@ python scripts/annotate.py batch.json
 ## 검증
 
 ```bash
-.venv/bin/python -m pytest tests/ -q                       # 27 tests
+.venv/bin/python -m pytest tests/ -q                       # 32 tests
 .venv/bin/python scripts/eval_paraphrase.py                # 튜닝용 (두 계층)
 .venv/bin/python scripts/eval_paraphrase.py --tier cold    # 엔진 성능만
 .venv/bin/python scripts/eval_recall.py                    # 회귀 감지용
 .venv/bin/python scripts/experiment_topic_signal.py        # 토픽 신호 기여도
 .venv/bin/python scripts/experiment_r5_priority.py         # 그래프 레인 가중치 · β
 .venv/bin/python scripts/annotate.py --list                # 주석이 빠진 기억
+.venv/bin/python scripts/experiment_rerank.py --tier cold  # 리랭커 상한 (모델 없이도 됨)
+.venv/bin/python scripts/eval_paraphrase.py --tier cold --rerank   # 리랭커 켠 프로덕션 경로
 ```
 
 `eval_recall.py`는 실제 `store.recall` 경로를 호출합니다. 각 기억의 본문 중간 문장을 질의로

@@ -30,12 +30,14 @@ def middle_sentence(content: str) -> str | None:
     return parts[len(parts) // 2] if parts else None
 
 
-def run(mode: str, cases: list[tuple[str, str]], project: str | None) -> None:
+def run(mode: str, cases: list[tuple[str, str]], project: str | None,
+        rerank: bool = False) -> None:
     con = db.connect()
     ranks = []
     for memory_id, query in cases:
         results = store.recall(
-            con, query, limit=DEPTH, project=project, detail=1, mode=mode
+            con, query, limit=DEPTH, project=project, detail=1, mode=mode,
+            rerank=rerank or None,
         )["results"]
         ids = [r["id"] for r in results]
         ranks.append(ids.index(memory_id) + 1 if memory_id in ids else DEPTH + 1)
@@ -53,6 +55,8 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--project", default=None)
     parser.add_argument("--limit", type=int, default=None, help="cap the number of cases")
+    parser.add_argument("--rerank", action="store_true",
+                        help="rescore the fused head with the cross-encoder (hybrid only)")
     args = parser.parse_args()
 
     con = db.connect()
@@ -74,8 +78,9 @@ def main() -> None:
 
     print(f"{len(cases)} cases (of {len(rows)} memories)"
           + (f", project={args.project}" if args.project else ""))
-    for mode in ("lexical", "semantic", "hybrid"):
-        run(mode, cases, args.project)
+    modes = ("hybrid",) if args.rerank else ("lexical", "semantic", "hybrid")
+    for mode in modes:
+        run(mode, cases, args.project, args.rerank)
 
 
 if __name__ == "__main__":

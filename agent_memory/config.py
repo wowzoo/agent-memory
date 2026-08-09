@@ -89,6 +89,21 @@ GRAPH_LANE_WEIGHT = _float("AGENT_MEMORY_GRAPH_LANE_WEIGHT", 0.5)
 # the memories assumed relevant before anything has confirmed they are.
 GRAPH_LANE_SEEDS = _int("AGENT_MEMORY_GRAPH_LANE_SEEDS", 3)
 
+# --- Reranking ---------------------------------------------------------------
+# A cross-encoder rescoring of the fused top RERANK_DEPTH. Measured on 72 paraphrase
+# queries (cold, one state): R@1 72.2% -> 91.7%, R@5 94.4% -> 98.6%, MRR 0.819 ->
+# 0.943, where 98.6% is the depth-10 ceiling. Off by default because it costs ~300 ms
+# per candidate on CPU -- 3 s per recall against ~10 ms for the lanes alone -- so the
+# caller decides per question whether the answer is worth the wait (`rerank=True`).
+# Depth 10 rather than 20: 20 raises the ceiling to 100% but doubles the bill for the
+# one remaining case. See agent_memory/rerank.py and scripts/experiment_rerank.py.
+RERANK_ENABLED = os.environ.get("AGENT_MEMORY_RERANK", "0").lower() in ("1", "true", "yes")
+RERANK_MODEL_DIR = Path(
+    os.environ.get("AGENT_MEMORY_RERANK_MODEL_DIR", HOME / "models" / "ko-reranker-int8")
+)
+RERANK_DEPTH = _int("AGENT_MEMORY_RERANK_DEPTH", 10)
+RERANK_MAX_TOKENS = _int("AGENT_MEMORY_RERANK_MAX_TOKENS", 512)
+
 # Slots reserved for a tier that relevance ranking would otherwise shut out. 0 = off.
 #
 # Both halves of this number were measured. Hot files outnumber the archive six to

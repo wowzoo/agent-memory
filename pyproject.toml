@@ -25,7 +25,10 @@ dependencies = [
 # scripts/export_model.py). Not required to run the server.
 # optimum 2.x moved the onnxruntime integration into its own distribution, so
 # `optimum[exporters]` alone no longer provides `optimum.onnxruntime`.
-export = ["torch>=2.4", "transformers>=4.44", "optimum>=2.1", "optimum-onnx>=0.1"]
+# `onnx` is listed explicitly rather than left to optimum-onnx's dependency tree:
+# quantizing the reranker goes through onnxruntime.quantization, which imports it.
+export = ["torch>=2.4", "transformers>=4.44", "optimum>=2.1", "optimum-onnx>=0.1",
+          "onnx>=1.16"]
 
 [project.scripts]
 agent-memory = "agent_memory.server:main"
