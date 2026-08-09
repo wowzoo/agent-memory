@@ -1,10 +1,12 @@
 """Does giving the topic line its own signal improve paraphrase recall?
 
-Baseline hybrid on the 20 hand-authored paraphrase queries is R@1 25.0% /
-R@5 75.0% / MRR 0.462. Paraphrase queries usually ask about a memory's *subject*,
-and every memory here opens with a keyword-dense topic line -- but that line is
-currently buried inside a 400-token chunk 0 and inside one undifferentiated FTS
-column, so it carries no more weight than any other sentence.
+Both treatments below are **already shipped** (`embedding.passages()` embeds the
+topic separately; `memories_fts` splits topic/body and `config.TOPIC_WEIGHT` is 3.0),
+adopted on the 20-query fixture where the pre-treatment baseline was hybrid
+R@1 25.0% / R@5 75.0% / MRR 0.462. So this harness is a re-measurement: it rebuilds
+the pre-treatment state from the same store and asks whether each half still earns
+its place on the current 72-query fixture. Baseline here means *without* the
+treatment -- not what production does.
 
 Two variants, measured against the same fixture and the same RRF settings as
 production so only the treatment differs:
@@ -35,13 +37,35 @@ TOPIC_WEIGHTS = (3.0, 1.0)  # (topic column, body column) for bm25()
 
 
 def load():
+    """Memories plus their *body* chunk vectors.
+
+    `embedding.passages()` already stores the topic as chunk 0, so the store's chunk
+    set contains the very treatment variant A is meant to add. Leaving those rows in
+    the base lane makes A a guaranteed no-op (measured: 0 of 72 orderings change), so
+    they are dropped here to recover the body-only baseline.
+    """
     con = db.connect()
     memories = con.execute(
         "SELECT id, topic, content FROM memories ORDER BY created_at"
     ).fetchall()
-    chunks = con.execute("SELECT memory_id, embedding FROM memory_chunks").fetchall()
+    chunks = con.execute(
+        "SELECT memory_id, idx, text, embedding FROM memory_chunks"
+    ).fetchall()
     con.close()
-    return memories, chunks
+    topics = {row["id"]: row["topic"].strip() for row in memories}
+    body = [
+        c for c in chunks
+        if not (c["idx"] == 0 and c["text"].strip() == topics.get(c["memory_id"]))
+    ]
+    return memories, body, len(chunks) - len(body)
+
+
+def resolve(memories, topic_prefix: str) -> str | None:
+    """Same unique-prefix rule as eval_paraphrase.resolve(): a prefix that matches
+    more than one topic cannot identify a gold memory, so the case is dropped."""
+    hits = [row["id"] for row in memories
+            if row["topic"][: len(topic_prefix)] == topic_prefix]
+    return hits[0] if len(hits) == 1 else None
 
 
 def build_lexical(memories):
@@ -111,14 +135,17 @@ def report(name, ranks):
 
 
 def main() -> None:
-    memories, chunk_rows = load()
-    by_prefix = {row["id"][:8]: row["id"] for row in memories}
-    cases = [
-        (by_prefix[c["memory_id"]], c["query"])
-        for c in json.loads(FIXTURE.read_text())["cases"]
-        if c["memory_id"] in by_prefix
-    ]
-    print(f"{len(cases)} paraphrase cases over {len(memories)} memories\n")
+    memories, chunk_rows, topic_chunks = load()
+    cases = []
+    for case in json.loads(FIXTURE.read_text())["cases"]:
+        gold = resolve(memories, case["topic_match"])
+        if gold is None:
+            print(f"  ! topic_match did not resolve uniquely — skipped: "
+                  f"{case['topic_match'][:50]}")
+            continue
+        cases.append((gold, case["query"]))
+    print(f"{len(cases)} paraphrase cases over {len(memories)} memories "
+          f"({len(chunk_rows)} body chunks; {topic_chunks} topic chunks held out)\n")
 
     chunk_ids = [r["memory_id"] for r in chunk_rows]
     chunk_matrix = np.stack([embedding.from_blob(r["embedding"]) for r in chunk_rows])
@@ -130,7 +157,7 @@ def main() -> None:
     lex, ids = build_lexical(memories)
 
     variants = {
-        "baseline (as shipped)": (False, False),
+        "baseline (no topic signal)": (False, False),
         "A  + topic vector": (False, True),
         "B  + topic column weighted 3x": (True, False),
         "C  both": (True, True),
