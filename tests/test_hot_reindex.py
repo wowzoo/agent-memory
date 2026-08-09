@@ -18,7 +18,7 @@ REPLACED = "# 완전히 다른 주제\n\n대시보드를 처음부터 새로 구
 
 
 @pytest.fixture
-def store(tmp_path, monkeypatch):
+def store(tmp_path, monkeypatch, real_model_dir):
     monkeypatch.setenv("AGENT_MEMORY_DB", str(tmp_path / "memory.db"))
     monkeypatch.setenv("AGENT_MEMORY_HOME", str(tmp_path))
     hot_dir = tmp_path / "hot"

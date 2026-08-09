@@ -6,7 +6,7 @@ import pytest
 
 
 @pytest.fixture
-def store(tmp_path, monkeypatch):
+def store(tmp_path, monkeypatch, real_model_dir):
     monkeypatch.setenv("AGENT_MEMORY_DB", str(tmp_path / "memory.db"))
     monkeypatch.setenv("AGENT_MEMORY_HOME", str(tmp_path))
     monkeypatch.setenv("AGENT_MEMORY_HOT_PATHS", str(tmp_path / "no-hot"))
