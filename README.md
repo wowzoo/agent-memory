@@ -357,6 +357,36 @@ mem_graph("AI-DLC 2.5.11", hops=2)
 
 관계는 근거 기억이 삭제되면 함께 사라지고, 아무 기억도 참조하지 않는 엔티티는 정리됩니다.
 
+### 주석은 세션마다 다시 붙여야 합니다 (`scripts/annotate.py`)
+
+hot 섹션은 본문을 고치면 해시가 바뀌어 새 `memory_id`가 되고, **설계상 주석을 잃습니다**
+(거짓 주석을 원리적으로 막는 대가입니다). 메모리 파일을 건드리는 세션마다 스토어가 미주석
+쪽으로 흘러가고, 주석이 위 recall 그래프 레인에 들어가므로 그 흐름이 회수 품질 문제가 됩니다.
+
+```
+python scripts/annotate.py --list                  # 주석 없는 기억
+python scripts/annotate.py batch.json --dry-run    # 해석만 확인
+python scripts/annotate.py batch.json
+```
+
+`mem_annotate` 인자가 아니라 **파일로 넣습니다.** MCP 툴 인자로 보낸 한글은 3분의 1가량이
+조용히 깨지고(8배치 실측: 엔티티 272개 중 94개), 파일 왕복은 보존합니다. 배치는
+`{"memory_id": "3f68be58", "entities": [...], "relations": [...]}` 목록이고 id 접두사로
+해석합니다. `MEMORY.md`의 색인 섹션은 `--list`에서 빼 둡니다 — 다른 기억을 가리키는 포인터뿐이라
+주석하면 그 엔티티만 중복됩니다.
+
+⚠️ **`--dry-run`은 쓰고 나서 되돌리는 방식이 아닙니다.** `graph.attach`가 스스로 커밋해서 되돌릴
+트랜잭션이 남지 않으므로, 해석과 건수만 확인하고 attach 는 부르지 않습니다.
+
+⚠️ **주석을 늘리면 회수가 좋아진다고 가정하지 마십시오.** 위 그래프 절의 판정 이후 편집으로
+주석을 잃은 hot 4섹션을 다시 붙이고 **같은 상태에서 앞뒤를 재봤더니**, cold-only 는 완전히
+동일했고(72.2% / 94.4% / 0.819) 두 계층 R@5 는 **94.4%→93.1% 로 1건 내려갔습니다**(MRR
+0.807→0.804). 원인은 명확합니다 — 새로 주석한 4섹션이 전부 "그래프" 주제라서, 그래프 레인이
+그 섹션들을 후보로 올리고 같은 주제의 cold 정답을 5위 밖으로 밀어냅니다(정답 5위→7위, 밀어낸
+3·6위가 새로 주석한 두 섹션). 평가셋 정답이 전부 cold 라 이 세트는 hot 이 올라오는 것을 항상
+손실로 셉니다만, 밀려난 질의는 실제로 그 cold 기억을 묻고 있었습니다. **주제가 몰린 주석은
+같은 주제의 정답과 5슬롯을 다툽니다.**
+
 ## 툴
 
 - **`mem_write(content, session=, topic=, project=, entities=, relations=)`** — 기억 저장.
@@ -405,6 +435,7 @@ mem_graph("AI-DLC 2.5.11", hops=2)
 .venv/bin/python scripts/eval_recall.py                    # 회귀 감지용
 .venv/bin/python scripts/experiment_topic_signal.py        # 토픽 신호 기여도
 .venv/bin/python scripts/experiment_r5_priority.py         # 그래프 레인 가중치 · β
+.venv/bin/python scripts/annotate.py --list                # 주석이 빠진 기억
 ```
 
 `eval_recall.py`는 실제 `store.recall` 경로를 호출합니다. 각 기억의 본문 중간 문장을 질의로
