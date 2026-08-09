@@ -151,6 +151,44 @@ def test_annotate_rejects_unknown_memory(store):
     con.close()
 
 
+def test_graph_lane_prefers_neighbours_sharing_the_rarer_concept(store):
+    """A concept on every memory separates nothing; a concept on two is evidence."""
+    db, _, store_module = store
+    con = db.connect()
+    seed = store_module.write(
+        con, "롯데온 MO 병렬개발 산출물.", entities=["롯데온 MO", "병렬개발"]
+    )["memory_id"]
+    rare = store_module.write(con, "덱 작업.", entities=["병렬개발"])["memory_id"]
+    common = [
+        store_module.write(con, f"기억 {i}.", entities=["롯데온 MO"])["memory_id"]
+        for i in range(4)
+    ]
+
+    ids = store_module._graph_lane(con, [seed], "", [], 50)
+    assert ids[0] == seed  # seeds are kept, not excluded
+    assert ids[1] == rare
+    assert set(ids[2:]) == set(common)
+    con.close()
+
+
+def test_graph_lane_is_off_outside_hybrid_and_when_disabled(store):
+    db, _, store_module = store
+    from agent_memory import config
+    con = db.connect()
+    store_module.write(con, "롯데온 MO 병렬개발 산출물.", entities=["롯데온 MO"])
+    store_module.write(con, "롯데온 MO 분석 덱.", entities=["롯데온 MO"])
+
+    def lanes(**kw):
+        results = store_module.recall(con, "롯데온 MO", limit=5, **kw)["results"]
+        return {lane for r in results for lane in r["lanes"]}
+
+    assert "graph" in lanes()
+    assert "graph" not in lanes(mode="lexical")
+    config.GRAPH_LANE_WEIGHT = 0.0
+    assert "graph" not in lanes()
+    con.close()
+
+
 def test_unannotated_memories_are_visible_in_totals(store):
     """The graph should say how much of the store it actually covers."""
     db, graph, store_module = store

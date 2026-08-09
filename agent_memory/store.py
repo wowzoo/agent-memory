@@ -156,17 +156,67 @@ def _semantic(con, query: str, where: str, params: list, pool: int) -> list[str]
     return [mid for mid, _ in ranked[:pool]]
 
 
-def _fuse(lanes: dict[str, list[str]], k: int) -> dict[str, float]:
+def _graph_lane(con, seeds: list[str], where: str, params: list, pool: int) -> list[str]:
+    """Co-citation over the concept graph: memories sharing concepts with the best hits.
+
+    Pseudo-relevance feedback, so it runs after the base lanes and takes their top few
+    as seeds. The seeds are kept rather than excluded: dropping them is the convention
+    for query *expansion* but wrong for a fused lane, because it removes the memory the
+    base lanes already ranked first and hands its slot to a neighbour (measured: R@1
+    1.4%). Rarer entities count for more -- a concept cited by forty memories separates
+    nothing.
+    """
+    if not seeds:
+        return []
+    entities = [
+        r["entity"]
+        for r in con.execute(
+            "SELECT DISTINCT entity FROM memory_entities "
+            f"WHERE memory_id IN ({','.join('?' * len(seeds))})",
+            seeds,
+        )
+    ]
+    if not entities:
+        return []
+
+    sql = (
+        "SELECT me.entity, me.memory_id FROM memory_entities me "
+        "JOIN memories m ON m.id = me.memory_id "
+        f"WHERE me.entity IN ({','.join('?' * len(entities))})"
+    )
+    if where:
+        sql += f" AND {where}"
+    rows = con.execute(sql, [*entities, *params]).fetchall()
+
+    cited: dict[str, int] = {}
+    for r in rows:
+        cited[r["entity"]] = cited.get(r["entity"], 0) + 1
+    weights: dict[str, float] = {}
+    # Accumulate in sorted order and tie-break on id: float addition is not
+    # associative, so hash-order iteration makes ties move between processes.
+    for r in sorted(rows, key=lambda r: (r["entity"], r["memory_id"])):
+        mid = r["memory_id"]
+        weights[mid] = weights.get(mid, 0.0) + 1.0 / cited[r["entity"]]
+    return [m for m, _ in sorted(weights.items(), key=lambda kv: (-kv[1], kv[0]))[:pool]]
+
+
+def _fuse(
+    lanes: dict[str, list[str]], k: int, weights: dict[str, float] | None = None
+) -> dict[str, float]:
     """Reciprocal rank fusion.
 
     Rank-based rather than score-based on purpose: BM25 scores and cosine
     similarities live on different, uncalibrated scales, so any weighted sum of
     the two needs a tuning constant per corpus. RRF needs none.
+
+    `weights` scales a lane's contribution, because plain RRF trusts every lane
+    equally and the graph lane is markedly noisier than the other two.
     """
     scores: dict[str, float] = {}
-    for ids in lanes.values():
+    for name, ids in sorted(lanes.items()):
+        w = (weights or {}).get(name, 1.0)
         for rank, mid in enumerate(ids, start=1):
-            scores[mid] = scores.get(mid, 0.0) + 1.0 / (k + rank)
+            scores[mid] = scores.get(mid, 0.0) + w / (k + rank)
     return scores
 
 
@@ -247,7 +297,20 @@ def recall(
     if mode in ("hybrid", "semantic"):
         lanes["semantic"] = _semantic(con, query, where, params, pool)
 
-    scores = _fuse(lanes, config.RRF_K)
+    weights: dict[str, float] = {}
+    if mode == "hybrid" and config.GRAPH_LANE_WEIGHT > 0:
+        seeds = [
+            mid
+            for mid, _ in sorted(
+                _fuse(lanes, config.RRF_K).items(), key=lambda kv: (-kv[1], kv[0])
+            )[: config.GRAPH_LANE_SEEDS]
+        ]
+        graph_ids = _graph_lane(con, seeds, where, params, pool)
+        if graph_ids:
+            lanes["graph"] = graph_ids
+            weights["graph"] = config.GRAPH_LANE_WEIGHT
+
+    scores = _fuse(lanes, config.RRF_K, weights)
     if not scores:
         response = {"status": "ok", "results": [], "results_count": 0, "mode": mode}
         if warning:
@@ -271,7 +334,9 @@ def recall(
 
     ranked = sorted(
         (kv for kv in scores.items() if kv[0] in rows),
-        key=lambda kv: -final_score(*kv),
+        # Tie-break on id so equal scores do not order by dict insertion, which
+        # depends on which lane happened to see the memory first.
+        key=lambda kv: (-final_score(*kv), kv[0]),
     )
     ordered = (
         _reserve_tier_slots(ranked, rows, limit, config.MIN_TIER_SLOTS)

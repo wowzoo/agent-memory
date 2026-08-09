@@ -77,6 +77,18 @@ def _float(name: str, default: float) -> float:
 TOPIC_WEIGHT = _float("AGENT_MEMORY_TOPIC_WEIGHT", 3.0)
 BODY_WEIGHT = _float("AGENT_MEMORY_BODY_WEIGHT", 1.0)
 
+# Weight of the concept-graph co-citation lane in the fusion; 0 disables it, and it
+# only runs in hybrid mode. Kept well under 1.0 because the lane is noisy on its own
+# (R@1 26% unaided) -- it is worth having as a tie-breaker, not as a peer of BM25 and
+# the embeddings. Measured (72 paraphrase queries, one store state, cold-only ->
+# both tiers): R@5 94.4 -> 95.8% and 93.1 -> 95.8%, R@1 and MRR no worse in either.
+# Every weight in 0.35..1.0 gains R@5 somewhere; 0.5 is the only one that gains in
+# both tier modes, and above it R@1 starts eroding (w=1.0: 72.2 -> 69.4% cold).
+GRAPH_LANE_WEIGHT = _float("AGENT_MEMORY_GRAPH_LANE_WEIGHT", 0.5)
+# Base-lane hits used as co-citation seeds. Feedback quality falls off fast: these are
+# the memories assumed relevant before anything has confirmed they are.
+GRAPH_LANE_SEEDS = _int("AGENT_MEMORY_GRAPH_LANE_SEEDS", 3)
+
 # Slots reserved for a tier that relevance ranking would otherwise shut out. 0 = off.
 #
 # Both halves of this number were measured. Hot files outnumber the archive six to

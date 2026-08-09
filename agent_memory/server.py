@@ -145,9 +145,11 @@ def mem_recall(
     When both tiers hold the same fact the hot one is ranked above its archived copy,
     so a stale archive entry cannot quietly outrank the file that corrected it.
 
-    Two lanes run and are fused by reciprocal rank: a Kiwi-morpheme BM25 lane
-    (so "패치" matches "패치를", which whitespace tokenizers miss) and a
-    Korean-tuned embedding lane over per-chunk vectors.
+    Three lanes are fused by reciprocal rank: a Kiwi-morpheme BM25 lane (so "패치"
+    matches "패치를", which whitespace tokenizers miss), a Korean-tuned embedding
+    lane over per-chunk vectors, and — in hybrid mode only, at half their
+    weight — a concept-graph lane that adds memories sharing entities with the top
+    hits, which is how an answer phrased in none of your words still surfaces.
 
     Parameters:
     - query: natural-language question or keywords, e.g. "한국어 검색이 왜 안 됐지"
