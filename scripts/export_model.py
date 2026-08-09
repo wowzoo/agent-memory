@@ -36,6 +36,11 @@ def main() -> None:
     parser.add_argument("--out", type=Path, default=config.MODEL_DIR)
     args = parser.parse_args()
 
+    # The verification below loads through agent_memory.embedding, which reads
+    # config.MODEL_DIR. Without this, a non-default --out would be checked against
+    # whatever export already sits in MODEL_DIR and pass without testing anything.
+    config.MODEL_DIR = args.out
+
     import numpy as np
     import torch
     from optimum.onnxruntime import ORTModelForFeatureExtraction

@@ -150,6 +150,11 @@ python3 -m venv .venv && .venv/bin/pip install -e .
 .venv/bin/python scripts/export_model.py
 ```
 
+⚠️ 이미 기억을 쌓은 스토어에서 이 export 를 다시 돌려 모델 디렉터리를 덮으면 안 됩니다.
+저장된 청크 벡터는 기존 아티팩트로 만들어진 것이고, `AGENT_MEMORY_MODEL_NAME` 이 그대로면
+`mem_recall` 의 모델 불일치 warning 도 뜨지 않습니다(2026-08-09 실측: 재export 아티팩트와
+기존 것의 프로브 cosine 0.936~0.951). 교체하려면 벡터를 전부 재색인하십시오.
+
 MCP 등록 (Claude Code):
 
 ```bash

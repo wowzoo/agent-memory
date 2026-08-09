@@ -23,7 +23,9 @@ dependencies = [
 [project.optional-dependencies]
 # Only needed to re-export the ONNX model from HuggingFace weights (see
 # scripts/export_model.py). Not required to run the server.
-export = ["torch>=2.4", "transformers>=4.44", "optimum[exporters]>=1.23"]
+# optimum 2.x moved the onnxruntime integration into its own distribution, so
+# `optimum[exporters]` alone no longer provides `optimum.onnxruntime`.
+export = ["torch>=2.4", "transformers>=4.44", "optimum>=2.1", "optimum-onnx>=0.1"]
 
 [project.scripts]
 agent-memory = "agent_memory.server:main"

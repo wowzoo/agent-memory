@@ -17,16 +17,17 @@ _session: Any = None
 _tokenizer: Any = None
 _chunk_tokenizer: Any = None
 _output_name: Any = None
+_input_names: Any = None
 
 
 def _load():
-    """Return (tokenizer, session, output_name), loading once."""
-    global _session, _tokenizer, _chunk_tokenizer, _output_name
+    """Return (tokenizer, session, output_name, input_names), loading once."""
+    global _session, _tokenizer, _chunk_tokenizer, _output_name, _input_names
     if _session is not None:
-        return _tokenizer, _session, _output_name
+        return _tokenizer, _session, _output_name, _input_names
     with _lock:
         if _session is not None:
-            return _tokenizer, _session, _output_name
+            return _tokenizer, _session, _output_name, _input_names
         import onnxruntime as ort
         from tokenizers import Tokenizer
 
@@ -65,23 +66,32 @@ def _load():
         if output is None:
             raise RuntimeError(f"unsupported ONNX outputs: {sorted(names)}")
 
+        # Whether the graph wants `token_type_ids` depends on the optimum version
+        # that produced it, not on the model: the checked-in export omits it, a
+        # fresh one from optimum 2.x makes it a required input. Read it off the
+        # session rather than assuming either shape.
+        inputs = {i.name for i in sess.get_inputs()}
+
         # `_session` last: the fast path above gates on it without the lock, so a
         # reader must not be able to see a set `_session` alongside an unset
-        # `_output_name`. Live from mcp 2.x on, where tool handlers run on worker
-        # threads rather than serialized on the event loop.
-        _tokenizer, _output_name, _session = tok, output, sess
-    return _tokenizer, _session, _output_name
+        # `_output_name` or `_input_names`. Live from mcp 2.x on, where tool
+        # handlers run on worker threads rather than serialized on the event loop.
+        _tokenizer, _output_name, _input_names, _session = tok, output, inputs, sess
+    return _tokenizer, _session, _output_name, _input_names
 
 
 def _encode(texts: list[str], prefix: str, batch_size: int = 16) -> np.ndarray:
-    tokenizer, session, output = _load()
+    tokenizer, session, output, input_names = _load()
     out = []
     for start in range(0, len(texts), batch_size):
         batch = [prefix + t for t in texts[start : start + batch_size]]
         encoded = tokenizer.encode_batch(batch)
         ids = np.array([e.ids for e in encoded], dtype=np.int64)
         mask = np.array([e.attention_mask for e in encoded], dtype=np.int64)
-        result = session.run([output], {"input_ids": ids, "attention_mask": mask})[0]
+        feed = {"input_ids": ids, "attention_mask": mask}
+        if "token_type_ids" in input_names:
+            feed["token_type_ids"] = np.zeros_like(ids)
+        result = session.run([output], feed)[0]
         if result.ndim == 3:  # token states -> masked mean pool
             m = mask[:, :, None].astype(np.float32)
             result = (result * m).sum(axis=1) / np.clip(m.sum(axis=1), 1e-9, None)
