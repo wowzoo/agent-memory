@@ -1,10 +1,11 @@
 """STDIO MCP server.
 
-Surface is deliberately three tools. Measured across 76 real Claude Code sessions,
+Surface is deliberately five tools. Measured across 76 real Claude Code sessions,
 MARM's 25 tools saw 129 calls, distributed as: log_entry 99, smart_recall 11,
 log_show 10, concept_build 4, concept_recall 3, graph_index 2 — and zero for
-notebook, summary, delete, compaction and the four code-graph tools. The three
-kept here covered 94% of actual use.
+notebook, summary, delete, compaction and the four code-graph tools. The five
+kept here cover all 129 of those calls (mem_graph absorbs both concept_recall and
+graph_index); what was dropped is the 19 tools nobody called.
 """
 
 from typing import Annotated, Any, Literal, NotRequired, Optional, TypedDict
