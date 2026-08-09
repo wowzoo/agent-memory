@@ -65,7 +65,11 @@ def _load():
         if output is None:
             raise RuntimeError(f"unsupported ONNX outputs: {sorted(names)}")
 
-        _tokenizer, _session, _output_name = tok, sess, output
+        # `_session` last: the fast path above gates on it without the lock, so a
+        # reader must not be able to see a set `_session` alongside an unset
+        # `_output_name`. Live from mcp 2.x on, where tool handlers run on worker
+        # threads rather than serialized on the event loop.
+        _tokenizer, _output_name, _session = tok, output, sess
     return _tokenizer, _session, _output_name
 
 

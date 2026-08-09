@@ -13,7 +13,7 @@ requires-python = ">=3.11"
 # an HTTP console, concept NER and a scheduler we do not build; a STDIO MCP server
 # with local retrieval needs none of them.
 dependencies = [
-    "mcp>=1.26.0,<2.0.0",
+    "mcp>=2.0.0,<3.0.0",
     "onnxruntime>=1.20",   # runs the Korean embedding model; no torch needed
     "tokenizers>=0.21",    # XLM-R tokenizer for the same model
     "kiwipiepy>=0.20",     # Korean morphological analysis for the lexical lane

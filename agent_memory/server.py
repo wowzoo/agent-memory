@@ -7,13 +7,28 @@ notebook, summary, delete, compaction and the four code-graph tools. The three
 kept here covered 94% of actual use.
 """
 
-from typing import Optional
+from typing import Annotated, Any, Literal, NotRequired, Optional, TypedDict
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server import MCPServer
+from pydantic import Field
 
 from . import db, graph, store
 
-mcp = FastMCP("agent-memory")
+mcp = MCPServer("agent-memory")
+
+
+# Declared as TypedDicts rather than BaseModels on purpose: pydantic validates them
+# into plain dicts, so the schema gains real field shapes while `graph.attach` keeps
+# receiving the dict-or-string it already normalizes.
+class Entity(TypedDict):
+    name: str
+    type: NotRequired[str]
+
+
+class Relation(TypedDict):
+    source: str
+    predicate: str
+    target: str
 
 
 @mcp.tool()
@@ -22,9 +37,9 @@ def mem_write(
     session: Optional[str] = None,
     topic: Optional[str] = None,
     project: Optional[str] = None,
-    entities: Optional[list] = None,
-    relations: Optional[list] = None,
-) -> dict:
+    entities: Optional[list[Entity | str]] = None,
+    relations: Optional[list[Relation]] = None,
+) -> dict[str, Any]:
     """Store a durable memory. Korean text is fully supported.
 
     Write decisions, rationale, outcomes and canonical references — things worth
@@ -59,9 +74,9 @@ def mem_write(
 @mcp.tool()
 def mem_annotate(
     memory_id: str,
-    entities: Optional[list] = None,
-    relations: Optional[list] = None,
-) -> dict:
+    entities: Optional[list[Entity | str]] = None,
+    relations: Optional[list[Relation]] = None,
+) -> dict[str, Any]:
     """Attach concept-graph entities and relations to a memory that already exists.
 
     Use this to build the graph over memories written before annotation, including
@@ -84,9 +99,9 @@ def mem_annotate(
 @mcp.tool()
 def mem_graph(
     entity: Optional[str] = None,
-    hops: int = 1,
+    hops: Annotated[int, Field(ge=1, le=graph.MAX_HOPS)] = 1,
     predicate: Optional[str] = None,
-) -> dict:
+) -> dict[str, Any]:
     """Traverse the concept graph, or survey its shape.
 
     Two modes:
@@ -116,10 +131,10 @@ def mem_recall(
     limit: int = 5,
     session: Optional[str] = None,
     project: Optional[str] = None,
-    detail: int = 1,
-    mode: str = "hybrid",
-    tier: Optional[str] = None,
-) -> dict:
+    detail: Literal[1, 2, 3] = 1,
+    mode: Literal["hybrid", "lexical", "semantic"] = "hybrid",
+    tier: Optional[Literal["hot", "cold"]] = None,
+) -> dict[str, Any]:
     """Search memories by meaning and keyword. Korean queries work as well as English.
 
     Searches BOTH tiers at once and says which is which:
@@ -155,7 +170,7 @@ def mem_recall(
 
 
 @mcp.tool()
-def mem_sessions(session: Optional[str] = None) -> dict:
+def mem_sessions(session: Optional[str] = None) -> dict[str, Any]:
     """List sessions, or list the entries inside one session.
 
     Parameters:

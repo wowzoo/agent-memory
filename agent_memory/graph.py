@@ -49,8 +49,8 @@ def _upsert_entity(con, display: str, entity_type: str = "concept") -> str | Non
 def attach(
     con: sqlite3.Connection,
     memory_id: str,
-    entities: list[dict] | None = None,
-    relations: list[dict] | None = None,
+    entities: list | None = None,
+    relations: list | None = None,
 ) -> dict:
     """Attach entities and relations to an existing memory. Replaces prior ones."""
     row = con.execute("SELECT id FROM memories WHERE id = ?", (memory_id,)).fetchone()
