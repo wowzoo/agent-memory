@@ -36,3 +36,10 @@ Transform tasks into verifiable goals:
 - "Add validation" → "Write tests for invalid inputs, then make them pass"
 - "Fix the bug" → "Write a test that reproduces it, then make it pass"
 - "Refactor X" → "Ensure tests pass before and after"
+
+## 4. Response Language
+
+**Reply to the user in natural, polite Korean (해요체/합니다체).**
+
+- Applies to conversational replies, not to code, identifiers, or commit messages.
+- Keep technical terms in their usual form; don't force awkward translations.
