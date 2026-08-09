@@ -52,7 +52,16 @@ CHUNK_OVERLAP = _int("AGENT_MEMORY_CHUNK_OVERLAP", 80)
 # --- Retrieval -------------------------------------------------------------
 RECALL_LIMIT = _int("AGENT_MEMORY_RECALL_LIMIT", 5)
 CANDIDATE_POOL = _int("AGENT_MEMORY_CANDIDATE_POOL", 50)
-RRF_K = _int("AGENT_MEMORY_RRF_K", 60)
+# RRF's k decides how much *corroboration* outweighs *conviction*. The usual 60 comes
+# from TREC-scale runs over pools of thousands; against 106 memories it flattens the
+# curve so far that two mediocre lane hits beat one excellent one -- a memory ranked
+# 25th and 26th in the two lanes outscored one ranked 3rd in a single lane, which is
+# how a semantic top-3 hit missing from the BM25 pool ended up 28th overall. Lowering
+# k sharpens the head. Measured (72 paraphrase queries, cold-only): R@1 70.8% -> 73.6%,
+# MRR 0.809 -> 0.823, R@5 unchanged; and on the verbatim eval_recall.py fixture
+# R@5 99.2% -> 100%, MRR 0.918 -> 0.923. Not knife-edge: every k in 5..20 beats 60,
+# and 10 is where R@5 stops improving before k=5 starts costing it a case.
+RRF_K = _int("AGENT_MEMORY_RRF_K", 10)
 
 
 def _float(name: str, default: float) -> float:
