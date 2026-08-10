@@ -125,7 +125,11 @@ def test_self_edges_and_blank_names_are_dropped(store):
         {"source": "A", "predicate": "", "target": "B"},
         {"source": "", "predicate": "uses", "target": "B"},
     ])
-    assert result["graph"] == {"entities": 0, "relations": 0}
+    # The *_given counts are how the caller learns that nothing landed rather than
+    # having to notice a zero and guess why.
+    assert result["graph"] == {
+        "entities": 0, "entities_given": 2, "relations": 0, "relations_given": 3,
+    }
     con.close()
 
 
@@ -198,4 +202,59 @@ def test_unannotated_memories_are_visible_in_totals(store):
     totals = graph.overview(con)["totals"]
     assert totals["annotated_memories"] == 1
     assert totals["total_memories"] == 2
+    con.close()
+
+
+def test_attach_reports_what_the_caller_supplied(store):
+    """`entities` is distinct keys attached, `entities_given` is items supplied. They
+    differ when two names collide under normalize or when one is blank, and a caller
+    reported "8 supplied, 7 attached" as an unexplained loss because only one was shown."""
+    db, graph, store_module = store
+    con = db.connect()
+    memory_id = store_module.write(con, "본문")["memory_id"]
+
+    merged = graph.attach(con, memory_id, [{"name": "RRF k=10"}, {"name": "rrf  k=10"}])
+    assert (merged["entities"], merged["entities_given"]) == (1, 2)
+
+    blank = graph.attach(con, memory_id, [{"name": "이름"}, {"name": "   "}])
+    assert (blank["entities"], blank["entities_given"]) == (1, 2)
+
+    clean = graph.attach(con, memory_id, [{"name": "가"}, {"name": "나"}])
+    assert (clean["entities"], clean["entities_given"]) == (2, 2)
+    con.close()
+
+
+def test_attach_replaces_and_the_cli_can_merge_instead(store):
+    """attach() replaces a memory's annotations; scripts/annotate.py --append is what
+    adds to them. Measured failure: a batch with one entity took a memory from 7 to 1."""
+    db, graph, store_module = store
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+    import annotate
+
+    con = db.connect()
+    memory_id = store_module.write(con, "본문")["memory_id"]
+    graph.attach(con, memory_id, [{"name": f"엔티티{i}"} for i in range(7)], [])
+    assert len(annotate.current(con, memory_id)[0]) == 7
+
+    item = {"memory_id": memory_id[:8], "entities": [{"name": "새 엔티티"}]}
+    entities, relations = annotate.merged(con, memory_id, item)
+    assert len(entities) == 8, "append keeps the seven and adds one"
+
+    graph.attach(con, memory_id, item["entities"], None)
+    assert len(annotate.current(con, memory_id)[0]) == 1, "plain attach replaces"
+    con.close()
+
+
+def test_write_says_so_when_an_entity_did_not_land_one_for_one(store):
+    """Lean by default: the *_given keys appear only when something merged or was
+    skipped, so their presence is the signal."""
+    db, _, store_module = store
+    con = db.connect()
+    clean = store_module.write(con, "a", entities=["가", "나"])
+    assert clean["graph"] == {"entities": 2, "relations": 0}
+
+    merged = store_module.write(con, "b", entities=["RRF k=10", "rrf  k=10"])
+    assert merged["graph"] == {"entities": 1, "relations": 0, "entities_given": 2}
     con.close()

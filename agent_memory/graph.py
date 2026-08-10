@@ -95,11 +95,18 @@ def attach(
     )
     _prune_unused_entities(con)
     con.commit()
+    # `*_given` is the caller's item count, `entities`/`relations` is what distinctly
+    # landed. They differ for two reasons and a caller cannot tell which without
+    # being told: two names that collide under `normalize` (case and whitespace only)
+    # merge into one entity, and a blank name is skipped. Reported as "8 supplied,
+    # 7 attached, cause unknown" before these counts existed.
     return {
         "status": "ok",
         "memory_id": memory_id,
         "entities": len(attached),
+        "entities_given": len(entities or []),
         "relations": kept_relations,
+        "relations_given": len(relations or []),
     }
 
 

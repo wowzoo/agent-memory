@@ -86,6 +86,14 @@ def write(
             "entities": attached.get("entities", 0),
             "relations": attached.get("relations", 0),
         }
+        # Only when they disagree, so the extra keys mean something: some input did
+        # not land one-for-one. Two names that differ by case or spacing merge into
+        # one entity and a blank name is skipped -- which is what "I supplied 8 and
+        # got 7 back, cause unknown" turned out to be.
+        for kind in ("entities", "relations"):
+            given = attached.get(f"{kind}_given", 0)
+            if given != result["graph"][kind]:
+                result["graph"][f"{kind}_given"] = given
     return result
 
 

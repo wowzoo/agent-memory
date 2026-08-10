@@ -11,11 +11,13 @@ Names are matched on `graph.normalize` keys, so case and spacing need not match.
     python scripts/fix_entity_names.py entity_rename.tsv
     python scripts/fix_entity_names.py entity_rename.tsv --dry-run
 
-A copy of the database is written next to it as `*.db.pre-rename` before any write.
+A copy of the database is written next to it as `*.db.pre-rename` before any write --
+through SQLite's backup API, not a file copy. This store runs in WAL mode and the log
+is routinely megabytes behind the main file (measured: 12MB db against a 9.6MB -wal),
+so `cp` produces a "backup" that is missing the most recent writes.
 """
 
 import argparse
-import shutil
 import sqlite3
 import sys
 from pathlib import Path
@@ -91,7 +93,12 @@ def main() -> None:
 
     if not args.dry_run:
         backup = args.db.with_suffix(".db.pre-rename")
-        shutil.copy(args.db, backup)
+        source = sqlite3.connect(args.db)
+        target = sqlite3.connect(backup)
+        with target:
+            source.backup(target)
+        target.close()
+        source.close()
         print(f"backup: {backup}")
 
     con = sqlite3.connect(args.db)

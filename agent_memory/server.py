@@ -63,7 +63,11 @@ def mem_write(
       server's: it cannot recover a predicate from Korean prose.
 
     Returns: status, memory_id, session, topic, project, chunks, and `graph` when
-    entities or relations were supplied.
+    entities or relations were supplied. `graph` also carries `entities_given` /
+    `relations_given` **when they differ from what landed** — names are matched on
+    case and spacing alone, so two spellings of one name merge into a single entity
+    and a blank name is skipped. Seeing the extra key means some input did not land
+    one-for-one; its absence means everything did.
     """
     with db.connect() as con:
         return store.write(
@@ -84,12 +88,14 @@ def mem_annotate(
     everything carried over from MARM. Read the memory first (mem_recall with
     detail=3), then annotate what it actually says.
 
-    Replaces that memory's previous entities and relations rather than merging, so
-    re-annotating is a correction and not an accumulation.
-
     Parameters:
     - memory_id: id from mem_write or mem_recall
     - entities, relations: same shape as mem_write
+
+    ⚠️ This REPLACES the memory's annotations rather than adding to them, so a call
+    carrying one entity leaves it with one. To add, read what is attached first
+    (`mem_graph` on one of its entities, or the `annotate.py --append` path) and send
+    the full set.
 
     Returns: status, memory_id, entities, relations
     """
