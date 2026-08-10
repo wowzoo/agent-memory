@@ -35,12 +35,13 @@ WHERE id NOT IN (SELECT memory_id FROM memory_entities)
   -- own; annotating it only duplicates their entities. Skipped so it does not sit
   -- in this list forever.
   AND COALESCE(path, '') NOT LIKE '%MEMORY.md'
+  AND (:project IS NULL OR project = :project)
 ORDER BY tier, topic
 """
 
 
-def list_unannotated(con) -> int:
-    rows = con.execute(UNANNOTATED).fetchall()
+def list_unannotated(con, project: str | None) -> int:
+    rows = con.execute(UNANNOTATED, {"project": project}).fetchall()
     for row in rows:
         print(f"{row['id'][:8]}  [{row['tier']}] {row['topic']}")
     print(f"\n{len(rows)} unannotated")
@@ -97,6 +98,10 @@ def main() -> int:
     parser.add_argument("batch", nargs="?", type=Path, help="JSON batch to attach")
     parser.add_argument("--list", action="store_true",
                         help="list memories with no annotations and exit")
+    # Several projects share one store, so an unfiltered list is mostly other
+    # people's work. A per-project routine needs to see only its own.
+    parser.add_argument("--project", default=None,
+                        help="restrict --list to one project (default: all)")
     parser.add_argument("--dry-run", action="store_true",
                         help="resolve every entry and report counts without writing")
     args = parser.parse_args()
@@ -106,7 +111,7 @@ def main() -> int:
     con = db.connect()
     try:
         if args.list:
-            return list_unannotated(con)
+            return list_unannotated(con, args.project)
         batch = json.loads(args.batch.read_text(encoding="utf-8"))
         return apply(con, batch, args.dry_run)
     finally:
