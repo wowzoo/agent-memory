@@ -6,7 +6,7 @@ the top N. Measuring that before exporting anything is cheaper than finding out
 afterwards that there were three points to play for.
 
     python scripts/experiment_rerank.py --tier cold                 # ceiling only
-    python scripts/experiment_rerank.py --tier cold --model ~/.agent-memory/models/ko-reranker
+    python scripts/experiment_rerank.py --tier cold --model ~/.agent-memory/models/ko-reranker-int8
 
 Ceiling table: `in pool` is what a perfect reranker would score at R@1 and R@5, since
 it would place the answer first. `recoverable` counts today's misses (rank > 5) that
