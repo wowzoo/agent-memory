@@ -195,6 +195,44 @@ def test_frontmatter_is_not_part_of_the_section(store):
     con.close()
 
 
+def test_another_projects_hot_files_survive_a_sync(store, monkeypatch, tmp_path):
+    """One store, several registered projects: each server process only sees its own
+    project's memory directory, so every other project's rows look like files that
+    disappeared. Dropping them takes their graph annotations with them and no
+    re-index brings those back -- which made alternating recalls between two projects
+    destroy each other's annotation work on every call."""
+    hot_dir, db, hot, _ = store
+    other = tmp_path / "other-project-hot"
+    other.mkdir()
+    (hot_dir / "mine.md").write_text(MEMORY_A, encoding="utf-8")
+    (other / "theirs.md").write_text(MEMORY_B, encoding="utf-8")
+
+    from agent_memory import graph
+
+    con = db.connect()
+    # The other project's server indexes and annotates its own file.
+    monkeypatch.setenv("AGENT_MEMORY_HOT_PATHS", str(other))
+    assert hot.sync(con)["indexed"] == 1
+    theirs = section_id(con, "두 번째 주제")
+    graph.attach(con, theirs, [{"name": "남의 엔티티"}], [])
+    assert annotated(con, theirs)
+
+    # Now this project's server runs. It must index its own file and leave theirs be.
+    monkeypatch.setenv("AGENT_MEMORY_HOT_PATHS", str(hot_dir))
+    stats = hot.sync(con)
+    assert stats["indexed"] == 1
+    assert stats["removed"] == 0, "another project's files are not ours to drop"
+    assert section_id(con, "두 번째 주제") == theirs
+    assert annotated(con, theirs)
+    assert section_id(con, "첫 번째 주제")
+
+    # A file that vanishes from *our* directory is still dropped.
+    (hot_dir / "mine.md").unlink()
+    assert hot.sync(con)["removed"] == 1
+    assert annotated(con, theirs)
+    con.close()
+
+
 def test_inserting_a_section_does_not_renumber_the_rest(store):
     """Position is not part of the id: adding a section above must not invalidate the
     sections below it, which is what an index-keyed id did."""

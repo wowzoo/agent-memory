@@ -67,6 +67,16 @@ CASCADE 로 매달려 있어서, 파일 단위로 지우고 다시 넣으면 손
 않습니다: 넣었을 때는 섹션을 위에 하나 끼우면 아래 전부가 번호가 밀려 무관하게 무효화됐습니다.
 모델을 갈아서 전량 재임베딩이 필요할 때는 `hot.sync(con, force=True)` 가 그대로 재구축합니다.
 
+⚠️ **한 스토어를 여러 프로젝트가 공유합니다.** MCP 는 프로젝트 단위로 등록하지만 DB 는
+`~/.agent-memory/memory.db` 하나입니다. 그래서 각 서버 프로세스는 자기 프로젝트의 memory 디렉터리만
+보고, `hot_files` 에 남은 **다른 프로젝트의 행은 "사라진 파일"처럼 보입니다.** 그것까지 지우면
+그 기억의 그래프 주석이 `memory_id` CASCADE 로 함께 죽고, 재색인해도 주석은 돌아오지 않습니다 —
+두 프로젝트를 번갈아 쓰면 recall 마다 서로의 주석 작업을 파괴했습니다(실측). 그래서 삭제 판정을
+**현재 `hot_dirs()` 밑의 경로로만** 한정합니다. 대가는 hot 디렉터리 자체가 없어졌을 때 행이
+남는 것이고, 손으로 쓴 주석을 지우는 것보다 훨씬 쌉니다(파일이 돌아오면 덮어씁니다).
+`tests/test_hot_reindex.py` 가 이걸 지킵니다. 부수적으로, 프로젝트 A 의 recall 은 프로젝트 B 의
+hot 섹션도 후보로 봅니다 — cold 가 이미 그런 것과 같은 설계이고, 결과의 `path` 로 구분됩니다.
+
 순위 규칙을 정하는 데 두 가지를 시도했다가 버렸습니다. 둘 다 실측입니다 (hot 582섹션 vs
 cold 101건, 파일이 6배 많음):
 
@@ -537,7 +547,7 @@ python scripts/annotate.py batch.json
 ## 검증
 
 ```bash
-.venv/bin/python -m pytest tests/ -q                       # 32 tests
+.venv/bin/python -m pytest tests/ -q                       # 34 tests
 .venv/bin/python scripts/eval_paraphrase.py                # 튜닝용 (두 계층)
 .venv/bin/python scripts/eval_paraphrase.py --tier cold    # 엔진 성능만
 .venv/bin/python scripts/eval_recall.py                    # 회귀 감지용

@@ -200,6 +200,7 @@ def sync(con, force: bool = False) -> dict:
         for row in con.execute("SELECT path, mtime, size, hash FROM hot_files")
     }
     present = _files()
+    directories = {str(d) for d in hot_dirs()}
     project = None
     stats = {"indexed": 0, "sections": 0, "kept": 0, "removed": 0, "unchanged": 0}
 
@@ -225,6 +226,17 @@ def sync(con, force: bool = False) -> dict:
         stats["indexed"] += 1
 
     for stale in known:  # files that disappeared or moved
+        # Only within the hot directories this process mirrors. `hot_files` is shared
+        # by every project registered against this store, so anything left in `known`
+        # is either gone or simply someone else's -- and dropping someone else's takes
+        # its graph annotations down with it (memory_id CASCADE), which no re-index
+        # restores. Measured before this guard: alternating recalls between two
+        # projects wiped each other's hot sections and annotations every single sync.
+        # The cost of being wrong in this direction is a stale row when a hot
+        # directory itself disappears, which is far cheaper than deleting hand-written
+        # annotations, and `_index_file` overwrites such a row if the file returns.
+        if str(Path(stale).parent) not in directories:
+            continue
         _drop(con, stale)
         stats["removed"] += 1
 
