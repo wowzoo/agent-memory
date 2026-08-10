@@ -87,8 +87,18 @@ def _fingerprint(text: str) -> str:
     return _norm(text)[:120]
 
 
-def _insert(con, *, session, project, topic, content, created_at, source) -> None:
+def _insert(con, *, session, project, topic, content, created_at, source) -> bool:
+    """Import one record. Returns False if it was already here.
+
+    The id is a digest of source+content precisely so that running this twice is
+    safe: MARM kept being written to after the first migration, and the only way to
+    collect what arrived since is to re-read the whole source and skip what landed
+    before. Without the skip, a second run dies on the first duplicate primary key
+    and imports nothing.
+    """
     memory_id = _stable_id(source, content)
+    if con.execute("SELECT 1 FROM memories WHERE id = ?", (memory_id,)).fetchone():
+        return False
     con.execute(
         "INSERT INTO memories(id, session, project, topic, content, created_at, source) "
         "VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -107,6 +117,7 @@ def _insert(con, *, session, project, topic, content, created_at, source) -> Non
             for i, (text, vec) in enumerate(zip(chunks, vectors))
         ],
     )
+    return True
 
 
 def migrate(source: Path) -> dict:
@@ -118,7 +129,8 @@ def migrate(source: Path) -> dict:
     con = db.connect()
 
     seen: set[str] = set()
-    stats = {"memories": 0, "log_entries": 0, "skipped_duplicate_logs": 0}
+    stats = {"memories": 0, "log_entries": 0, "skipped_duplicate_logs": 0,
+             "already_present": 0}
 
     for row in src.execute(
         "SELECT session_name, project, content, timestamp, context_type "
@@ -128,7 +140,7 @@ def migrate(source: Path) -> dict:
         if not content:
             continue
         seen.add(_fingerprint(content))
-        _insert(
+        if not _insert(
             con,
             session=_session_from(row["session_name"]),
             project=row["project"],
@@ -136,7 +148,9 @@ def migrate(source: Path) -> dict:
             content=content,
             created_at=row["timestamp"],
             source=f"marm:memory:{row['context_type'] or 'general'}",
-        )
+        ):
+            stats["already_present"] += 1
+            continue
         stats["memories"] += 1
         if stats["memories"] % 20 == 0:
             con.commit()
@@ -154,7 +168,7 @@ def migrate(source: Path) -> dict:
             stats["skipped_duplicate_logs"] += 1
             continue
         seen.add(fp)
-        _insert(
+        if not _insert(
             con,
             session=_session_from(row["session_name"]),
             project=row["project"],
@@ -162,7 +176,9 @@ def migrate(source: Path) -> dict:
             content=content,
             created_at=row["entry_date"],
             source="marm:log",
-        )
+        ):
+            stats["already_present"] += 1
+            continue
         stats["log_entries"] += 1
 
     con.commit()
@@ -182,6 +198,7 @@ def main() -> None:
     print(f"migrated {stats['total']} memories "
           f"({stats['memories']} from memories, {stats['log_entries']} from log_entries)")
     print(f"skipped {stats['skipped_duplicate_logs']} log entries already present as memories")
+    print(f"skipped {stats['already_present']} records already migrated")
     print(f"{stats['chunks']} chunks embedded")
 
 
