@@ -249,3 +249,41 @@ def test_inserting_a_section_does_not_renumber_the_rest(store):
     assert before == {section_id(con, h) for h in ("첫 번째 주제", "두 번째 주제")}
     assert orphan_count(con) == 0
     con.close()
+
+
+def test_a_directory_keeps_the_project_that_first_indexed_it(store, monkeypatch, tmp_path):
+    """The project used to come from the current working directory, so a process that
+    indexed someone else's memory directory relabelled their sections as its own --
+    measured on the real store, and it silently breaks `project=` filtering. The first
+    indexer records the owner and later ones inherit it."""
+    hot_dir, db, hot, _ = store
+    other = tmp_path / "their-hot"
+    other.mkdir()
+    (hot_dir / "mine.md").write_text(MEMORY_A, encoding="utf-8")
+    (other / "theirs.md").write_text(MEMORY_B, encoding="utf-8")
+    con = db.connect()
+
+    def sync_as(project, hot_paths):
+        monkeypatch.setenv("AGENT_MEMORY_PROJECT", project)
+        monkeypatch.setenv("AGENT_MEMORY_HOT_PATHS", str(hot_paths))
+        return hot.sync(con)
+
+    def project_of(heading):
+        return con.execute(
+            "SELECT project FROM memories WHERE tier='hot' AND topic = ?", (heading,)
+        ).fetchone()["project"]
+
+    sync_as("theirs", other)
+    sync_as("mine", hot_dir)
+    assert (project_of("두 번째 주제"), project_of("첫 번째 주제")) == ("theirs", "mine")
+
+    # Now "mine" indexes both directories, as AGENT_MEMORY_HOT_PATHS allows. Their
+    # section must keep its own project rather than taking this process's.
+    (other / "theirs.md").write_text(REPLACED, encoding="utf-8")
+    import os
+    monkeypatch.setenv("AGENT_MEMORY_PROJECT", "mine")
+    monkeypatch.setenv("AGENT_MEMORY_HOT_PATHS", os.pathsep.join([str(hot_dir), str(other)]))
+    hot.sync(con)
+    assert project_of("완전히 다른 주제") == "theirs"
+    assert project_of("첫 번째 주제") == "mine"
+    con.close()

@@ -182,9 +182,9 @@ def _index_file(con, path: Path, project: str | None) -> tuple[int, int]:
         )
 
     con.execute(
-        "INSERT OR REPLACE INTO hot_files(path, mtime, size, hash) "
-        "VALUES (?, ?, ?, ?)",
-        (str(path), mtime, size, digest),
+        "INSERT OR REPLACE INTO hot_files(path, mtime, size, hash, project) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (str(path), mtime, size, digest, project),
     )
     return len(wanted), len(existing & wanted.keys())
 
@@ -203,6 +203,16 @@ def sync(con, force: bool = False) -> dict:
     known = {
         row["path"]: (row["mtime"], row["size"], row["hash"])
         for row in con.execute("SELECT path, mtime, size, hash FROM hot_files")
+    }
+    # Which project a directory belongs to, as recorded by whoever indexed it first.
+    # Without this the project comes from the current working directory, which is
+    # wrong for any directory this process does not own -- measured: indexing another
+    # project's memory dir relabelled its sections as ours.
+    owner = {
+        row["path"].rsplit("/", 1)[0]: row["project"]
+        for row in con.execute(
+            "SELECT path, project FROM hot_files WHERE project IS NOT NULL"
+        )
     }
     present = _files()
     directories = {str(d) for d in hot_dirs()}
@@ -225,7 +235,7 @@ def sync(con, force: bool = False) -> dict:
             project = detect_project()
         if force:
             _drop(con, key)
-        sections, kept = _index_file(con, path, project)
+        sections, kept = _index_file(con, path, owner.get(str(path.parent)) or project)
         stats["sections"] += sections
         stats["kept"] += kept
         stats["indexed"] += 1

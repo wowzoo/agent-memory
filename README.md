@@ -77,6 +77,14 @@ CASCADE 로 매달려 있어서, 파일 단위로 지우고 다시 넣으면 손
 `tests/test_hot_reindex.py` 가 이걸 지킵니다. 부수적으로, 프로젝트 A 의 recall 은 프로젝트 B 의
 hot 섹션도 후보로 봅니다 — cold 가 이미 그런 것과 같은 설계이고, 결과의 `path` 로 구분됩니다.
 
+⚠️ **같은 이유로 `project` 도 cwd 에서 오면 안 됩니다.** `detect_project()` 는 현재 디렉터리
+이름을 쓰는데, 그건 자기 디렉터리를 미러링하는 보통의 경우에만 맞습니다. `AGENT_MEMORY_HOT_PATHS`
+로 남의 memory 디렉터리를 가리킨 순간 **그 프로젝트의 섹션이 이쪽 이름으로 다시 라벨됩니다** —
+실측했고, `project=` 필터와 `mem_recall(project=...)` 이 조용히 틀려집니다. 그래서 디렉터리를
+처음 색인한 프로젝트 이름을 `hot_files.project` 에 적어 두고 이후 색인은 그것을 물려받습니다
+(schema v6). 기존 스토어는 `db._migrate` 가 컬럼을 추가하고 그 파일이 만든 `memories.project`
+에서 백필합니다.
+
 순위 규칙을 정하는 데 두 가지를 시도했다가 버렸습니다. 둘 다 실측입니다 (hot 582섹션 vs
 cold 101건, 파일이 6배 많음):
 

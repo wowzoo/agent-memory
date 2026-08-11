@@ -4,7 +4,7 @@ import sqlite3
 
 from . import config
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS memories (
@@ -25,11 +25,20 @@ CREATE INDEX IF NOT EXISTS idx_memories_created ON memories(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_memories_tier ON memories(tier);
 
 -- Change detection for the hot mirror, so a recall re-embeds only edited files.
+--
+-- `project` is here because several projects share this store and a memory's project
+-- was taken from the *current working directory*. That is right for the usual case --
+-- each server process mirrors its own project -- and wrong the moment a process
+-- indexes a directory belonging to someone else, which AGENT_MEMORY_HOT_PATHS exists
+-- to allow. Measured: pointing it at another project's memory dir relabelled that
+-- project's section as this one's, which silently breaks `project=` filtering. The
+-- directory's first indexer records the name here and later ones inherit it.
 CREATE TABLE IF NOT EXISTS hot_files (
     path    TEXT PRIMARY KEY,
     mtime   REAL NOT NULL,
     size    INTEGER NOT NULL,
-    hash    TEXT NOT NULL
+    hash    TEXT NOT NULL,
+    project TEXT
 );
 
 -- Standalone (not external-content) because the indexed text is derived by
@@ -108,9 +117,28 @@ def connect() -> sqlite3.Connection:
     con.execute("PRAGMA journal_mode=WAL")
     con.execute("PRAGMA foreign_keys=ON")
     con.executescript(_SCHEMA)
+    _migrate(con)
     _init_meta(con)
     con.commit()
     return con
+
+
+def _migrate(con: sqlite3.Connection) -> None:
+    """Bring an existing file up to the current schema.
+
+    CREATE TABLE IF NOT EXISTS does nothing to a table that already exists, so a
+    column added to the DDL above never appears in a store created before it.
+    """
+    columns = {row[1] for row in con.execute("PRAGMA table_info(hot_files)")}
+    if "project" not in columns:
+        con.execute("ALTER TABLE hot_files ADD COLUMN project TEXT")
+        # Backfill from the rows that file produced. Those already carry the right
+        # project for every directory each project indexed itself.
+        con.execute(
+            "UPDATE hot_files SET project = ("
+            "  SELECT m.project FROM memories m"
+            "  WHERE m.path = hot_files.path AND m.project IS NOT NULL LIMIT 1)"
+        )
 
 
 def _init_meta(con: sqlite3.Connection) -> None:
