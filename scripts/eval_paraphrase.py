@@ -32,9 +32,30 @@ def resolve(con, topic_prefix: str) -> str | None:
     return rows[0]["id"] if len(rows) == 1 else None
 
 
+def resolve_hot(con, path: str, heading: str) -> str | None:
+    """A hot section keys on its file and heading, not on a topic prefix.
+
+    Its id is uuid5(path|heading|body-hash), so an id written into a fixture stops
+    resolving the next time that section is edited; and headings repeat across files
+    ('## 다음에 할 일'), so a prefix alone is not unique. Topics are stored truncated.
+    """
+    rows = con.execute(
+        "SELECT id FROM memories WHERE tier = 'hot' AND path = ? AND topic = ?",
+        (path, heading[:120]),
+    ).fetchall()
+    return rows[0]["id"] if len(rows) == 1 else None
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--show-misses", action="store_true")
+    parser.add_argument(
+        "--fixture",
+        type=Path,
+        default=FIXTURE,
+        help="case file (default: the 72 paraphrase queries every A/B so far was "
+             "measured on; collected queries live in their own file)",
+    )
     parser.add_argument(
         "--tier",
         choices=("hot", "cold"),
@@ -48,15 +69,16 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    cases = json.loads(FIXTURE.read_text())["cases"]
+    cases = json.loads(args.fixture.read_text())["cases"]
     con = db.connect()
 
     resolved = []
     for case in cases:
-        full = resolve(con, case["topic_match"])
+        full = (resolve_hot(con, case["path"], case["heading"]) if "path" in case
+                else resolve(con, case["topic_match"]))
         if full is None:
-            print(f"  ! topic_match did not resolve uniquely — skipped: "
-                  f"{case['topic_match'][:50]}")
+            key = case.get("topic_match") or case.get("heading", "")
+            print(f"  ! target did not resolve uniquely — skipped: {key[:50]}")
             continue
         resolved.append((full, case["query"]))
     print(f"{len(resolved)} paraphrase cases"
