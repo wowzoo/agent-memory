@@ -1,6 +1,8 @@
 """Write and recall — the two operations that carried 86% of real MARM usage."""
 
+import json
 import os
+import re
 import sqlite3
 import uuid
 from datetime import datetime, timezone
@@ -29,6 +31,34 @@ def active_session(con: sqlite3.Connection) -> str:
 
 
 # --------------------------------------------------------------------------- write
+
+# An `entities` argument that ended up inside `content` instead of beside it.
+_ENTITY_ARRAY = re.compile(r'\[\s*\{\s*"name"\s*:.*?\}\s*\]', re.DOTALL)
+
+
+def _entity_json_in(content: str) -> str | None:
+    """The entity array, if the caller pasted it into the prose.
+
+    Measured: five memories in one project carry their own entity list inside their
+    text -- the same array they also passed as `entities` -- because the two
+    arguments were composed as one string. Nothing is lost, which is why it went
+    three weeks unnoticed: the graph took the entities and the prose is intact. The
+    cost is that the last chunk of such a memory embeds JSON rather than Korean, and
+    its entity labels are counted twice in the lexical lane.
+
+    Reported, not stripped. Cutting text out of what the caller asked to store is a
+    worse failure than saying so, and a memory may legitimately quote this shape.
+    """
+    for match in _ENTITY_ARRAY.finditer(content):
+        try:
+            parsed = json.loads(match.group(0))
+        except ValueError:
+            continue
+        if isinstance(parsed, list) and any(
+            isinstance(item, dict) and "name" in item for item in parsed
+        ):
+            return match.group(0)
+    return None
 
 
 def write(
@@ -94,6 +124,13 @@ def write(
             given = attached.get(f"{kind}_given", 0)
             if given != result["graph"][kind]:
                 result["graph"][f"{kind}_given"] = given
+    stray = _entity_json_in(content)
+    if stray:
+        result["warning"] = (
+            f"content contains an entity-shaped JSON array ({len(stray)} chars). If "
+            "that is the `entities` argument pasted into the text, the prose kept a "
+            "copy of it and this memory's last chunk embeds JSON rather than prose."
+        )
     return result
 
 

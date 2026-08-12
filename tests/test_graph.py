@@ -258,3 +258,25 @@ def test_write_says_so_when_an_entity_did_not_land_one_for_one(store):
     merged = store_module.write(con, "b", entities=["RRF k=10", "rrf  k=10"])
     assert merged["graph"] == {"entities": 1, "relations": 0, "entities_given": 2}
     con.close()
+
+
+def test_write_says_so_when_the_entity_array_is_inside_the_content(store):
+    """The `entities` argument composed into `content` instead of beside it: five
+    memories in one project stored their own entity list twice before anyone noticed,
+    because nothing fails -- so the write reports it rather than staying silent."""
+    db, _, store_module = store
+    con = db.connect()
+    entities = [{"name": "패치 증거", "type": "concept"}]
+    pasted = store_module.write(
+        con,
+        '산문 본문이다.\n\n[{"name": "패치 증거", "type": "concept"}]',
+        entities=entities,
+    )
+    assert "warning" in pasted and "entity-shaped JSON array" in pasted["warning"]
+    assert pasted["graph"] == {"entities": 1, "relations": 0}, "the graph still lands"
+
+    clean = store_module.write(con, "산문만 있는 본문이다.", entities=entities)
+    assert "warning" not in clean
+    # A bare bracket run is not an entity array; only a parsed list of named objects.
+    assert "warning" not in store_module.write(con, '표기: [{"a": 1}] 를 쓴다')
+    con.close()
