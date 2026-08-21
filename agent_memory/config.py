@@ -82,9 +82,17 @@ BODY_WEIGHT = _float("AGENT_MEMORY_BODY_WEIGHT", 1.0)
 # (R@1 26% unaided) -- it is worth having as a tie-breaker, not as a peer of BM25 and
 # the embeddings. Measured (72 paraphrase queries, one store state, cold-only ->
 # both tiers): R@5 94.4 -> 95.8% and 93.1 -> 95.8%, R@1 and MRR no worse in either.
-# Every weight in 0.35..1.0 gains R@5 somewhere; 0.5 is the only one that gains in
-# both tier modes, and above it R@1 starts eroding (w=1.0: 72.2 -> 69.4% cold).
-GRAPH_LANE_WEIGHT = _float("AGENT_MEMORY_GRAPH_LANE_WEIGHT", 0.5)
+# Raised 0.5 -> 0.75 on 2026-08-21 after the store roughly doubled (cold 124 -> 203,
+# hot 693 -> 895 sections, relations 1372 -> 1833). The optimum moved with it: 0.75 now
+# beats 0.5 on all six numbers with nothing traded away (cold 66.7/86.1/0.763 ->
+# 68.1/87.5/0.773, both tiers 59.7/76.4/0.683 -> 61.1/76.4/0.695), and the old note
+# that "above 0.5 R@1 erodes" no longer holds -- 0.65..1.0 now *gain* two R@5 cases.
+# w=1.0 is the only variant lifting R@5 in both modes but it sells a cold R@1 case, so
+# it was not taken: this lane is only ever adopted when the gain is free.
+# The lane's contribution grew as the corpus got noisier, which is the whole reason to
+# re-sweep on growth: both-tier R@1 over a graph-off baseline went +0 (adoption) ->
+# +4.1pp (2026-08-12) -> +13.9pp here (47.2 -> 61.1). Re-sweep when the corpus jumps.
+GRAPH_LANE_WEIGHT = _float("AGENT_MEMORY_GRAPH_LANE_WEIGHT", 0.75)
 # Base-lane hits used as co-citation seeds. Feedback quality falls off fast: these are
 # the memories assumed relevant before anything has confirmed they are.
 GRAPH_LANE_SEEDS = _int("AGENT_MEMORY_GRAPH_LANE_SEEDS", 3)
