@@ -1,0 +1,32 @@
+{
+ "_comment": [
+  "Queries asked in real sessions, collected by scripts/collect_queries.py.",
+  "Kept apart from paraphrase_queries.json on purpose: that set's 72 cases",
+  "are the baseline every recall A/B so far was measured against, and adding",
+  "cases to it would move the denominator under those numbers.",
+  "Hot cases key on path+heading because a hot id is uuid5(path|heading|",
+  "body-hash) and dies the next time that section is edited."
+ ],
+ "cases": [
+  {
+   "query": "2.5.59 스냅샷 비교 리포트 2.5.57 로테이트",
+   "path": "/Users/wowzoo/.claude/projects/-Users-wowzoo-Development-aidlc-v2-patch/memory/project_aidlc_workshop_content.md",
+   "heading": "2.5.59 세대 올림"
+  },
+  {
+   "query": "내 이슈 로스터 open PR CONFLICTING #715 #555",
+   "path": "/Users/wowzoo/.claude/projects/-Users-wowzoo-Development-aidlc-v2-patch/memory/project_v2_to_kiro_ide.md",
+   "heading": "PR 4건 — 🆕 **전부 CLOSED, 머지 0** (2026-08-16 KST `gh` 실측)"
+  },
+  {
+   "query": "드롭 파일 제외 기준 동기화 트리거",
+   "path": "/Users/wowzoo/.claude/projects/-Users-wowzoo-Development-ai-dlc--single-source-of-truth-old-new-compare-v2/memory/log-recall-queries-for-eval.md",
+   "heading": "log-recall-queries-for-eval"
+  },
+  {
+   "query": "2.5.75 세대 올림 패치 트리",
+   "path": "/Users/wowzoo/.claude/projects/-Users-wowzoo-Development-aidlc-v2-patch/memory/project_aidlc_workshop_content.md",
+   "heading": "2.5.59 세대 올림"
+  }
+ ]
+}
