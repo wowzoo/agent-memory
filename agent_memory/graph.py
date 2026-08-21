@@ -30,6 +30,12 @@ def normalize(name: str) -> str:
     return _WS.sub(" ", name).strip().lower()
 
 
+def normalize_predicate(predicate: str | None) -> str:
+    """Storage key for a relation type. Spaces become underscores, so the stored form
+    is what `mem_graph(predicate=...)` has to match exactly -- see `_neighbours`."""
+    return _WS.sub("_", (predicate or "").strip().lower())
+
+
 def _upsert_entity(con, display: str, entity_type: str = "concept") -> str | None:
     display = _WS.sub(" ", display or "").strip()
     if not display:
@@ -76,7 +82,7 @@ def attach(
             continue
         source = _upsert_entity(con, item.get("source", ""))
         target = _upsert_entity(con, item.get("target", ""))
-        predicate = _WS.sub("_", (item.get("predicate") or "").strip().lower())
+        predicate = normalize_predicate(item.get("predicate"))
         if not (source and target and predicate) or source == target:
             continue
         con.execute(

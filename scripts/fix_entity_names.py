@@ -1,4 +1,4 @@
-"""Rename corrupted entity names from a verified bad->good mapping file.
+"""Rename corrupted entity names or predicates from a verified bad->good mapping file.
 
 Korean entity names arrive through MCP arguments escaped, and re-typing them by
 hand corrupts a fresh set every batch (`전체`->`전재`, `반응성`->`반융성`). The only
@@ -8,8 +8,16 @@ at the DB level in one pass -- which is what this does.
 The mapping is a TSV of `bad<TAB>good`, one pair per line; blank lines are skipped.
 Names are matched on `graph.normalize` keys, so case and spacing need not match.
 
+`--predicates` renames relation types instead, matched on `graph.normalize_predicate`.
+They need their own mode because a predicate is not an entity: it has no row of its
+own, no display form and no foreign key, so the only thing to rewrite is the
+`relations.predicate` column. Corruption hurts more there than in prose -- `_neighbours`
+compares predicates with `=`, so `mem_graph(predicate=...)` can never match a corrupted
+one, and the relation is unreachable by traversal for good.
+
     python scripts/fix_entity_names.py entity_rename.tsv
     python scripts/fix_entity_names.py entity_rename.tsv --dry-run
+    python scripts/fix_entity_names.py predicate_rename.tsv --predicates
 
 A copy of the database is written next to it as `*.db.pre-rename` before any write --
 through SQLite's backup API, not a file copy. This store runs in WAL mode and the log
@@ -25,7 +33,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from agent_memory import config  # noqa: E402
-from agent_memory.graph import normalize  # noqa: E402
+from agent_memory.graph import normalize, normalize_predicate  # noqa: E402
 
 
 def read_pairs(path: Path) -> list[tuple[str, str]]:
@@ -64,6 +72,30 @@ def rename(con: sqlite3.Connection, pairs: list[tuple[str, str]]) -> None:
             print(f"RENAMED: {bad} -> {good}")
 
 
+def rename_predicates(con: sqlite3.Connection, pairs: list[tuple[str, str]]) -> None:
+    for bad, good in pairs:
+        bk, gk = normalize_predicate(bad), normalize_predicate(good)
+        n = con.execute(
+            "SELECT COUNT(*) FROM relations WHERE predicate = ?", (bk,)
+        ).fetchone()[0]
+        if not n:
+            print(f"SKIP (not found): {bad}")
+            continue
+        # `relations` is keyed on (source, predicate, target, memory_id), so if the same
+        # triple already carries the good predicate the UPDATE would collide on the PK.
+        con.execute(
+            "UPDATE OR IGNORE relations SET predicate = ? WHERE predicate = ?", (gk, bk)
+        )
+        left = con.execute(
+            "SELECT COUNT(*) FROM relations WHERE predicate = ?", (bk,)
+        ).fetchone()[0]
+        if left:
+            con.execute("DELETE FROM relations WHERE predicate = ?", (bk,))
+            print(f"RENAMED {n - left}, MERGED {left}: {bad} -> {good}")
+        else:
+            print(f"RENAMED {n}: {bad} -> {good}")
+
+
 def verify(con: sqlite3.Connection) -> int:
     dangling = con.execute(
         "SELECT COUNT(*) FROM memory_entities WHERE entity NOT IN (SELECT name FROM entities)"
@@ -80,12 +112,15 @@ def verify(con: sqlite3.Connection) -> int:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Rename corrupted entity names from a mapping file.")
-    parser.add_argument("mapping", type=Path, help="TSV of bad<TAB>good entity names")
+    parser = argparse.ArgumentParser(description="Rename corrupted entity names or predicates from a mapping file.")
+    parser.add_argument("mapping", type=Path, help="TSV of bad<TAB>good names")
     parser.add_argument(
         "--db", type=Path, default=config.DB_PATH, help="store to rewrite (default: the configured store)"
     )
     parser.add_argument("--dry-run", action="store_true", help="roll back instead of committing")
+    parser.add_argument(
+        "--predicates", action="store_true", help="rename relations.predicate instead of entity names"
+    )
     args = parser.parse_args()
 
     pairs = read_pairs(args.mapping)
@@ -108,7 +143,10 @@ def main() -> None:
     # have to hold off until COMMIT rather than firing per statement.
     con.execute("PRAGMA defer_foreign_keys = ON")
     try:
-        rename(con, pairs)
+        if args.predicates:
+            rename_predicates(con, pairs)
+        else:
+            rename(con, pairs)
         if args.dry_run:
             con.rollback()
             print("dry run -- rolled back")
