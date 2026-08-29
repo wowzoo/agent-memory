@@ -112,6 +112,26 @@ RERANK_MODEL_DIR = Path(
 RERANK_DEPTH = _int("AGENT_MEMORY_RERANK_DEPTH", 10)
 RERANK_MAX_TOKENS = _int("AGENT_MEMORY_RERANK_MAX_TOKENS", 512)
 
+# Skip the reranker when every lane already retrieved the top hit. Only applies to
+# reranking that comes from RERANK_ENABLED: a caller passing `rerank=True` asked for
+# the cross-encoder and gets it.
+#
+# This is what makes RERANK_ENABLED=1 safe to set. Measured on 170 cases (cold 72 +
+# hot 38 + 60 middle-sentence queries, 2026-08-29): reranking everything is *worse*
+# than reranking nothing (pooled R@1 55.9% vs 57.6%, R@5 75.3% vs 82.9%), because it
+# wins on the two authored fixtures and destroys verbatim mid-document lookups
+# (R@1 81.7% -> 33.3%). Gated, it beats the un-reranked baseline on R@1 and R@5 on
+# all three fixtures at 18% of the latency bill -- pooled R@1 57.6 -> 64.1%,
+# R@5 82.9 -> 85.3%, mean latency about 0.5 s instead of 3 s.
+# ⚠️ It deliberately leaves value on the table for hot-tier questions: 23.7 -> 36.8%
+# R@1 where always-on reaches 71.1%. A caller asking about a memory file's contents
+# should still pass `rerank=True` for that question.
+RERANK_GATE = os.environ.get("AGENT_MEMORY_RERANK_GATE", "1").lower() not in (
+    "0",
+    "false",
+    "no",
+)
+
 # Slots reserved for a tier that relevance ranking would otherwise shut out. 0 = off.
 #
 # Both halves of this number were measured. Hot files outnumber the archive six to

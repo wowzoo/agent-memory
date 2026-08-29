@@ -324,6 +324,30 @@ def _rerank(query: str, ranked: list, rows: dict, depth: int) -> tuple[list, boo
     return [head[i] for i in order] + ranked[depth:], True
 
 
+def _corroborated(lanes: dict[str, list[str]], memory_id: str) -> bool:
+    """Do all three lanes hold this memory?
+
+    The gate on the reranker. Measured on 170 queries (2026-08-29): where some lane
+    missed the top hit -- 31 of 170 -- reranking improved 14 and hurt 2, and where all
+    three held it, it improved 30 and hurt 42. So corroboration separates a 7:1 win
+    from a net loss, which is the whole basis for spending 3 s on one and not the other.
+
+    Membership in the lane's candidate list, not that lane's own first place: a lane
+    missing the top hit from a pool of `CANDIDATE_POOL` means that retrieval mode never
+    saw it, which is a much stronger signal than ranking it second.
+
+    Three named lanes rather than "every lane that ran", which is what this was first
+    written as and is wrong. A hybrid recall drops the graph lane entirely when the
+    seeds carry no entities, and `all()` over the two survivors then reads as
+    corroboration -- on the hot fixture that skipped the reranker for three queries it
+    was measured to help, taking hot R@1 from 36.8% to 28.9%. An absent graph lane is a
+    fact about the query, not a licence to trust the two that are left. The same
+    arithmetic makes a single-lane mode ungated, which is what we want: one lane cannot
+    corroborate itself.
+    """
+    return sum(memory_id in ids for ids in lanes.values()) >= 3
+
+
 def _tier_of(rows: dict, memory_id: str) -> str:
     row = rows.get(memory_id)
     return row["tier"] if row is not None else "cold"
@@ -415,11 +439,20 @@ def recall(
         key=lambda kv: (-final_score(*kv), kv[0]),
     )
 
-    reranked = False
+    reranked = gated = False
     # `rerank` here is the caller's flag, which shadows the module of the same name;
     # `_rerank` below is where the module is used.
     if config.RERANK_ENABLED if rerank is None else rerank:
-        ranked, reranked = _rerank(query, ranked, rows, config.RERANK_DEPTH)
+        # The gate overrides the default only. `rerank=True` is a caller who decided
+        # this question is worth the wait, and that decision outranks the heuristic.
+        gated = (
+            rerank is None
+            and config.RERANK_GATE
+            and bool(ranked)
+            and _corroborated(lanes, ranked[0][0])
+        )
+        if not gated:
+            ranked, reranked = _rerank(query, ranked, rows, config.RERANK_DEPTH)
 
     # After reranking, not before: the slots exist so neither tier disappears from
     # what the caller sees, and the reranked order is what they see.
@@ -460,6 +493,10 @@ def recall(
     }
     if reranked:
         response["reranked"] = config.RERANK_DEPTH
+    if gated:
+        # Said out loud: without it, a caller who enabled reranking cannot tell a
+        # skipped rerank from a broken one, and the two want opposite responses.
+        response["rerank_skipped"] = "every lane retrieved the top hit"
     if warning:
         response["warning"] = warning
     return response

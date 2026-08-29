@@ -167,12 +167,16 @@ def mem_recall(
     - mode: 'hybrid' (default) | 'lexical' (BM25 only) | 'semantic' (vectors only)
     - tier: 'hot' or 'cold' to restrict; omit to search both
     - rerank: True to rescore the top 10 with a Korean cross-encoder before
-      answering. Measured on 72 paraphrase queries: R@1 72%→92%, R@5 94%→99%.
-      It costs about 3 seconds, so it is off unless asked for. Use it for "what
-      happened with X" questions, or when a first search came back vague. Leave it
-      off for a quick lookup, and also when hunting a phrase from deep inside a
-      long memory: each candidate is judged on its first ~512 tokens, so evidence
-      past that is invisible (on verbatim mid-document queries R@5 drops to 79%).
+      answering. Measured over both tiers: R@1 55.6%→66.7% on paraphrase queries
+      and 23.7%→71.1% when the answer is in a memory file. It costs about 3
+      seconds, so it is off unless asked for. Use it for "what happened with X"
+      questions, or when a first search came back vague. Leave it off when hunting
+      a phrase from deep inside a long memory: each candidate is judged on its
+      first ~512 tokens, so evidence past that is invisible — on verbatim
+      mid-document queries it takes R@1 from 82% to 33%. When this server has
+      reranking on by default the call is gated instead: it is skipped when all
+      three lanes already retrieved the top hit, and `rerank_skipped` says so.
+      Passing True overrides that gate.
 
     Returns: status, mode, ranked results (each with tier, score, the lanes that
     found it, and `path` for hot results), results_count. A `warning` field appears

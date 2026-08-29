@@ -53,6 +53,9 @@ def test_env_default_is_read_when_the_call_does_not_say(store, monkeypatch):
     db, store_module, config, _ = store
     con = seed(db, store_module)
     # rerank=False must win over the environment; None means "use the default".
+    # The gate is off here on purpose: this test is about which of the two says
+    # whether to rerank, and the gate is a second question asked after that one.
+    monkeypatch.setattr(config, "RERANK_GATE", False)
     monkeypatch.setattr(config, "RERANK_ENABLED", True)
     monkeypatch.setattr(store_module, "_rerank", lambda *a: (a[1], True))
     assert store_module.recall(con, "한국어 검색")["reranked"] == config.RERANK_DEPTH
@@ -93,6 +96,102 @@ def test_reserved_slots_do_not_outrank_the_reranked_head(store):
     ranked = [("h1", 0.10), ("h2", 0.30), ("h3", 0.20), ("c1", 0.40), ("c2", 0.05)]
     window = store_module._reserve_tier_slots(ranked, rows, limit=3, reserve=2)
     assert [mid for mid, _ in window[:3]] == ["h1", "c1", "c2"], window
+
+
+def seed_with_graph(db, store_module):
+    """The same memories, annotated so the graph lane actually runs.
+
+    Without entities a hybrid recall has two lanes, and two lanes never corroborate --
+    so a gate test seeded by `seed()` would pass for the wrong reason.
+    """
+    con = seed(db, store_module)
+    for row in con.execute("SELECT id FROM memories").fetchall():
+        store_module.graph.attach(
+            con, row["id"],
+            entities=[{"name": "회수 품질", "type": "concept"}],
+            relations=[{"source": "회수 품질", "predicate": "applies_to",
+                        "target": "평가셋"}],
+        )
+    return con
+
+
+def test_the_gate_skips_the_reranker_when_all_three_lanes_hold_the_top_hit(
+    store, monkeypatch
+):
+    """Corroboration is read off the lanes, and the response says the skip happened."""
+    db, store_module, config, _ = store
+    con = seed_with_graph(db, store_module)
+    monkeypatch.setattr(config, "RERANK_ENABLED", True)
+    monkeypatch.setattr(store_module, "_rerank", lambda *a: (a[1], True))
+
+    response = store_module.recall(con, "한국어 검색이 안 되던 원인")
+    assert sorted(response["results"][0]["lanes"]) == ["graph", "lexical", "semantic"]
+    assert "reranked" not in response
+    assert response["rerank_skipped"]
+    con.close()
+
+
+def test_a_missing_graph_lane_is_not_corroboration(store, monkeypatch):
+    """Two lanes agreeing is not the measured signal. Read as one, the gate skipped
+    three hot queries the reranker was measured to fix (R@1 36.8% -> 28.9%)."""
+    db, store_module, config, _ = store
+    con = seed(db, store_module)  # no entities -> no graph lane
+    monkeypatch.setattr(config, "RERANK_ENABLED", True)
+    monkeypatch.setattr(store_module, "_rerank", lambda *a: (a[1], True))
+
+    response = store_module.recall(con, "한국어 검색이 안 되던 원인")
+    assert "graph" not in response["results"][0]["lanes"]
+    assert response["reranked"] == config.RERANK_DEPTH
+    assert "rerank_skipped" not in response
+    con.close()
+
+
+def test_the_gate_yields_to_a_caller_who_asked(store, monkeypatch):
+    """`rerank=True` is a decision about this question, not a default to second-guess."""
+    db, store_module, config, _ = store
+    con = seed(db, store_module)
+    monkeypatch.setattr(store_module, "_rerank", lambda *a: (a[1], True))
+    response = store_module.recall(con, "한국어 검색이 안 되던 원인", rerank=True)
+    assert response["reranked"] == config.RERANK_DEPTH
+    assert "rerank_skipped" not in response
+    con.close()
+
+
+def test_one_lane_cannot_corroborate_itself(store, monkeypatch):
+    """A single-lane mode has no second opinion to read, so it is never gated --
+    otherwise the lane that retrieved the hit would vouch for its own ordering."""
+    db, store_module, config, _ = store
+    con = seed(db, store_module)
+    monkeypatch.setattr(config, "RERANK_ENABLED", True)
+    monkeypatch.setattr(store_module, "_rerank", lambda *a: (a[1], True))
+    for mode in ("lexical", "semantic"):
+        response = store_module.recall(con, "한국어 검색이 안 되던 원인", mode=mode)
+        assert response["reranked"] == config.RERANK_DEPTH, mode
+    con.close()
+
+
+def test_a_lane_that_missed_the_top_hit_opens_the_gate(store, monkeypatch):
+    db, store_module, config, _ = store
+    con = seed(db, store_module)
+    monkeypatch.setattr(config, "RERANK_ENABLED", True)
+    monkeypatch.setattr(store_module, "_rerank", lambda *a: (a[1], True))
+    # The lexical lane returns nothing, which is "this retrieval mode never saw it"
+    # rather than "it ranked it second" -- the case the gate exists to catch.
+    monkeypatch.setattr(store_module, "_lexical", lambda *a: [])
+    response = store_module.recall(con, "한국어 검색이 안 되던 원인")
+    assert response["reranked"] == config.RERANK_DEPTH
+    assert "rerank_skipped" not in response
+    con.close()
+
+
+def test_corroboration_needs_all_three_lanes(store):
+    _, store_module, _, _ = store
+    lanes = {"lexical": ["a", "b"], "semantic": ["b", "a"], "graph": ["a"]}
+    assert store_module._corroborated(lanes, "a")
+    assert not store_module._corroborated(lanes, "b")  # the graph lane never saw it
+    # Two lanes holding it is not corroboration, however unanimous they look.
+    assert not store_module._corroborated({"lexical": ["a"], "semantic": ["a"]}, "a")
+    assert not store_module._corroborated({"semantic": ["a"]}, "a")
 
 
 def test_real_reranker_orders_the_obvious_answer_first(store, real_rerank_dir):
