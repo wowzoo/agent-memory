@@ -324,6 +324,44 @@ def _rerank(query: str, ranked: list, rows: dict, depth: int) -> tuple[list, boo
     return [head[i] for i in order] + ranked[depth:], True
 
 
+def _rescue_lane_leaders(
+    ranked: list[tuple[str, float]], lanes: dict[str, list[str]], limit: int
+) -> tuple[list[tuple[str, float]], int]:
+    """Pull a base lane's first choice into the window when no other lane found it.
+
+    Only the two base lanes vouch here. The graph lane keeps its seeds, so its first hit
+    is usually the fused first hit already, and unaided it ranks 26% -- it is a
+    tie-breaker, not a witness.
+
+    Uncorroborated on purpose: a memory both lanes retrieved has already had its say in
+    the fusion, twice. This is for the case the fusion structurally underweights -- one
+    lane certain, the other never having seen it.
+
+    Like `_reserve_tier_slots` this puts the promoted row at the *end* of the window
+    rather than re-sorting, so nothing better is demoted below anything worse, and the
+    fused score stays on the row. Ordering therefore stops matching `score`, which is
+    already true after reranking; `rescued` in the response is what says so.
+    """
+    if limit <= 1 or len(ranked) <= limit:
+        return ranked, 0
+    rescued = 0
+    for name in ("lexical", "semantic"):
+        ids = lanes.get(name) or []
+        if not ids:
+            continue
+        leader = ids[0]
+        if sum(leader in found for found in lanes.values()) > 1:
+            continue
+        position = next((i for i, (mid, _) in enumerate(ranked) if mid == leader), None)
+        if position is None or position < limit:
+            continue
+        row = ranked[position]
+        ranked = (ranked[: limit - 1] + [row]
+                  + ranked[limit - 1 : position] + ranked[position + 1 :])
+        rescued += 1
+    return ranked, rescued
+
+
 def _corroborated(lanes: dict[str, list[str]], memory_id: str) -> bool:
     """Do all three lanes hold this memory?
 
@@ -461,6 +499,11 @@ def recall(
         if tier is None
         else ranked
     )
+    # Last, so tier reservation cannot spend the rescued slot: it displaces the weakest
+    # entries of the window, which is exactly where a rescue lands.
+    rescued = 0
+    if config.RESCUE_LANE_LEADERS:
+        ordered, rescued = _rescue_lane_leaders(ordered, lanes, limit)
 
     cap = _DETAIL_CHARS.get(detail)
     results = []
@@ -497,6 +540,8 @@ def recall(
         # Said out loud: without it, a caller who enabled reranking cannot tell a
         # skipped rerank from a broken one, and the two want opposite responses.
         response["rerank_skipped"] = "every lane retrieved the top hit"
+    if rescued:
+        response["rescued"] = rescued
     if warning:
         response["warning"] = warning
     return response

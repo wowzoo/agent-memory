@@ -66,6 +66,14 @@ def main() -> None:
         help="restrict recall to one tier (default: both, interleaved)",
     )
     parser.add_argument(
+        "--limit",
+        type=int,
+        default=DEPTH,
+        help="how many results recall returns. 20 is what every A/B so far used; 5 is "
+             "RECALL_LIMIT, the window a caller actually gets -- and the only one where "
+             "tier slots and lane rescue can change anything",
+    )
+    parser.add_argument(
         "--rerank",
         action="store_true",
         help="rescore the fused head with the cross-encoder (hybrid only, ~3 s/query)",
@@ -95,11 +103,11 @@ def main() -> None:
         ranks, misses = [], []
         for memory_id, query in resolved:
             results = store.recall(
-                con, query, limit=DEPTH, detail=1, mode=mode, tier=args.tier,
+                con, query, limit=args.limit, detail=1, mode=mode, tier=args.tier,
                 rerank=args.rerank or None,
             )["results"]
             ids = [r["id"] for r in results]
-            rank = ids.index(memory_id) + 1 if memory_id in ids else DEPTH + 1
+            rank = ids.index(memory_id) + 1 if memory_id in ids else args.limit + 1
             ranks.append(rank)
             if rank > 5:
                 misses.append((query, rank))

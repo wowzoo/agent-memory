@@ -132,6 +132,31 @@ RERANK_GATE = os.environ.get("AGENT_MEMORY_RERANK_GATE", "1").lower() not in (
     "no",
 )
 
+# Give a base lane's own first choice a slot when no other lane retrieved it at all.
+#
+# Diagnosed 2026-08-30 (`scripts/diagnose_candidates.py`): of the cold answers the
+# fusion puts outside the top 5, only 3 of 72 were missing from both lanes' pools --
+# candidate generation is not the leak. The rest were retrieved, often by a lane that
+# was certain: one hot query is the lexical lane's *first* hit and eighth after fusion.
+# That is RRF working as designed, one lane at rank 2 scoring 1/(k+2) against two lanes
+# at rank 8 scoring 2/(k+8), and lowering RRF_K to 10 did not reach these cases.
+#
+# Categorical on purpose, like the tier slots and the rerank gate: it promotes to the
+# last slot of the caller's window and there is no weight to tune. A score multiplier
+# would need one, and this repo has rejected two of those already.
+#
+# Measured at RECALL_LIMIT=5 -- the only window where it can act -- on a store copy with
+# this session's own record sections removed, because those sections quote the fixture's
+# cases and the lexical lane then retrieves the record instead of the answer:
+#   cold 72   55.6 / 79.2 unchanged
+#   hot 38    R@5 73.7% -> 76.3%, R@1 unchanged, nothing worse
+# One case, and it is exactly the case the diagnosis named. Lowering RRF_K to 5 buys the
+# same hot R@5 by rewarding conviction everywhere, and pays cold R@5 2.8 points for it;
+# this buys it only where a lane stands alone.
+RESCUE_LANE_LEADERS = os.environ.get(
+    "AGENT_MEMORY_RESCUE_LANE_LEADERS", "0"
+).lower() in ("1", "true", "yes")
+
 # Slots reserved for a tier that relevance ranking would otherwise shut out. 0 = off.
 #
 # Both halves of this number were measured. Hot files outnumber the archive six to

@@ -57,6 +57,8 @@ def main() -> None:
     ap.add_argument("--rerank", action="store_true")
     ap.add_argument("--tier", choices=("hot", "cold"), default=None)
     ap.add_argument("--show-misses", action="store_true")
+    ap.add_argument("--limit", type=int, default=DEPTH,
+                    help="results returned; 5 is RECALL_LIMIT, the caller's real window")
     args = ap.parse_args()
 
     cases = json.loads(args.fixture.read_text())["cases"]
@@ -68,11 +70,11 @@ def main() -> None:
         if gold is None:
             print(f"  ! did not resolve: {case['heading'][:50]}")
             continue
-        results = store.recall(con, case["query"], limit=DEPTH, detail=1,
+        results = store.recall(con, case["query"], limit=args.limit, detail=1,
                                mode=args.mode, tier=args.tier,
                                rerank=args.rerank or None)["results"]
         ids = [r["id"] for r in results]
-        rank = ids.index(gold) + 1 if gold in ids else DEPTH + 1
+        rank = ids.index(gold) + 1 if gold in ids else args.limit + 1
         rows.append({**case, "rank": rank,
                      "top_tier": results[0]["tier"] if results else None,
                      "top_topic": results[0]["topic"] if results else ""})

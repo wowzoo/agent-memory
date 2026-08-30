@@ -206,3 +206,43 @@ def test_real_reranker_orders_the_obvious_answer_first(store, real_rerank_dir):
     assert results["reranked"] == config.RERANK_DEPTH
     assert "영어 전용 임베딩" in results["results"][0]["content"]
     con.close()
+
+
+def test_rescue_promotes_an_uncorroborated_lane_leader(store):
+    """A lane's own first hit, retrieved by nothing else, lands in the last slot of the
+    window -- not at the top, because one lane's conviction is evidence, not a verdict."""
+    _, store_module, _, _ = store
+    ranked = [(f"m{i}", 1.0 - i / 100) for i in range(8)]
+    lanes = {"lexical": ["m6", "m0"], "semantic": ["m0", "m1"], "graph": ["m0"]}
+    out, n = store_module._rescue_lane_leaders(ranked, lanes, limit=5)
+    assert n == 1
+    assert [mid for mid, _ in out][:5] == ["m0", "m1", "m2", "m3", "m6"]
+    # Nothing else moved, and the displaced row is still there, one place lower.
+    assert [mid for mid, _ in out][5:] == ["m4", "m5", "m7"]
+
+
+def test_rescue_ignores_a_leader_another_lane_also_found(store):
+    """Corroborated hits already had their say in the fusion, twice."""
+    _, store_module, _, _ = store
+    ranked = [(f"m{i}", 1.0 - i / 100) for i in range(8)]
+    lanes = {"lexical": ["m6"], "semantic": ["m0", "m6"], "graph": []}
+    out, n = store_module._rescue_lane_leaders(ranked, lanes, limit=5)
+    assert n == 0 and out == ranked
+
+
+def test_rescue_leaves_a_leader_already_in_the_window(store):
+    _, store_module, _, _ = store
+    ranked = [(f"m{i}", 1.0 - i / 100) for i in range(8)]
+    lanes = {"lexical": ["m3"], "semantic": ["m0"], "graph": []}
+    out, n = store_module._rescue_lane_leaders(ranked, lanes, limit=5)
+    assert n == 0 and out == ranked
+
+
+def test_rescue_is_off_unless_asked_and_says_so_when_it_fires(store, monkeypatch):
+    db, store_module, config, _ = store
+    con = seed(db, store_module)
+    assert "rescued" not in store_module.recall(con, "한국어 검색")
+    monkeypatch.setattr(config, "RESCUE_LANE_LEADERS", True)
+    monkeypatch.setattr(store_module, "_rescue_lane_leaders", lambda o, l, n: (o, 2))
+    assert store_module.recall(con, "한국어 검색")["rescued"] == 2
+    con.close()
