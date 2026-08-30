@@ -50,6 +50,15 @@ WINDOW = 5
 # the diagnosis flagged as unreachable even though it technically shares two terms.
 COMMON = 0.05
 
+# The third population is the one that matters for any device that rewards lexical
+# overlap: `collected_queries.json` is what people actually typed, kept out of the two
+# fixtures on purpose so it cannot move their denominators. Every query in the other two
+# was written by someone who had read the memory it is supposed to find, so a lexical
+# device measured only there is measured on its own best case. Reported separately rather
+# than merged, for the same reason it is stored separately.
+COLLECTED = FIXTURE.parent / "collected_queries.json"
+POPULATIONS = (("cold", FIXTURE), ("hot", HOT_FIXTURE), ("실사용", COLLECTED))
+
 
 def df_lookup(con, cache: dict[str, int], term: str) -> int:
     if term not in cache:
@@ -137,7 +146,7 @@ def main() -> None:
     total = con.execute("SELECT COUNT(*) AS n FROM memories").fetchone()["n"]
     print(f"store: {config.DB_PATH}, {total} memories, 흔한 용어 기준 df > {COMMON:.0%}")
     cache: dict[str, int] = {}
-    for name, fixture in (("cold", FIXTURE), ("hot", HOT_FIXTURE)):
+    for name, fixture in POPULATIONS:
         rows = survey(con, cases_of(con, fixture), total, cache, args.rank)
         report(name, rows, args.show_terms)
     con.close()

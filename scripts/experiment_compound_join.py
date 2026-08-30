@@ -11,21 +11,27 @@ is the same trade in the same place.
 
 Measured 2026-08-30 on the contamination-free copy, `limit=5`, `--rerank auto`:
 
-    | | cold 72 R@1 / R@5 / MRR | hot 38 R@1 / R@5 / MRR | hot_only R@5 |
-    | 기준선 | 63.9 / 79.2 / 0.737 | 36.8 / 84.2 / 0.566 | 80.8 |
-    | 결합   | 66.7 / 80.6 / 0.752 | 34.2 / 86.8 / 0.547 | 84.6 |
+    |        | cold 72 R@1 / R@5 | hot 38 R@1 / R@5 | 실사용 4 R@1 / R@5 |
+    | 기준선 | 63.9 / 79.2       | 36.8 / 84.2      | 0.0 / 50.0         |
+    | 결합   | 66.7 / 80.6       | 34.2 / 86.8      | 0.0 / 25.0         |
 
-Not adopted. 13 of 110 cases move, 7 up and 6 down, for +2 R@5 net at +22.2% index tokens
--- and the case that motivated it is still not delivered. It goes from **rank >20 to 6**:
-the join does put the gold in the lexical lane (15th of 129 matches, where before it
-matched nothing), and then the fusion buries it, because the semantic lane has it at
-206/1521 and one lane's 15th place loses to two lanes agreeing. That is the pathology the
-candidate-generation diagnosis already named, arriving from a new direction.
+Not adopted. 14 of 114 cases move, 7 up and 7 down, for +2 R@5 on the fixtures at +22.2%
+index tokens -- and the case that motivated it is still not delivered. It goes from **rank
+>20 to 6**: the join does put the gold in the lexical lane (15th of 129 matches, where
+before it matched nothing), and then the fusion buries it, because the semantic lane has it
+at 206/1521 and one lane's 15th place loses to two lanes agreeing. That is the pathology
+the candidate-generation diagnosis already named, arriving from a new direction.
 
-⚠️ What this device actually is, is a noun-bigram index, not compound normalization: it
-also produced `cliv` and `칸전수`. Those are harmless -- a junk join only matches if the
-memory contains the same junk, which means a shared phrase -- but it means the fixtures
-flatter it, since every query here was written by someone who had read the memory.
+🔴 **The real-usage column is what settles it.** What this device actually is, is a
+noun-bigram index, not compound normalization -- it also produced `cliv` and `칸전수`. On the
+fixtures that is harmless, because a junk join only matches a memory containing the same
+junk, which is a shared phrase. But every fixture query was written by someone who had
+already read the memory it should find, so a device rewarding lexical overlap is measured
+there on its own best case. On the four queries people actually typed it **halves R@5**:
+"내 이슈 로스터 open PR CONFLICTING #715 #555" goes 3 -> 6. Real questions are keyword
+lists, and joining adjacent keywords fabricates terms that were never phrases. n=4 decides
+nothing on its own, but it is the only population that is not self-referential and its sign
+is the opposite one.
 
 ⇒ 재개 조건: extend the lane-leader rescue past `ids[0]`. Rescue promotes only a lane's
 *first* choice, so it cannot reach a gold sitting 15th in the lane that is certain about
@@ -44,9 +50,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from agent_memory import config, db, korean, store  # noqa: E402
-from diagnose_candidates import HOT_FIXTURE, cases_of, position  # noqa: E402
-from diagnose_vocabulary import COMMON, WINDOW, df_lookup  # noqa: E402
-from eval_paraphrase import FIXTURE  # noqa: E402
+from diagnose_candidates import cases_of, position  # noqa: E402
+from diagnose_vocabulary import COMMON, POPULATIONS, WINDOW, df_lookup  # noqa: E402
 
 # Only nouns join. Verb and adverb stems next to each other are a sentence, not a compound.
 _NOUNS = frozenset({"NNG", "NNP", "SL", "SH"})
@@ -81,7 +86,7 @@ def bucket_of(rarest: float | None) -> str:
 
 def migration(con, total: int, cache: dict) -> None:
     """Which cases gain a rare shared term. A proxy for --eval, and much cheaper."""
-    for name, fixture in (("cold", FIXTURE), ("hot", HOT_FIXTURE)):
+    for name, fixture in POPULATIONS:
         moved, stayed = [], 0
         for gold, query in cases_of(con, fixture):
             row = con.execute(
@@ -108,7 +113,7 @@ def migration(con, total: int, cache: dict) -> None:
 
 def ranks(con) -> dict[str, int]:
     out = {}
-    for name, fixture in (("cold", FIXTURE), ("hot", HOT_FIXTURE)):
+    for name, fixture in POPULATIONS:
         for gold, query in cases_of(con, fixture):
             results = store.recall(con, query, limit=WINDOW, detail=1, mode="hybrid",
                                    rerank=None)["results"]
@@ -117,7 +122,7 @@ def ranks(con) -> dict[str, int]:
 
 
 def score(tag: str, got: dict[str, int]) -> None:
-    for name in ("cold", "hot"):
+    for name, _ in POPULATIONS:
         rs = [v for k, v in got.items() if k.startswith(f"{name}|")]
         print(f"  {tag:<6} {name:<5} n={len(rs):<3} "
               f"R@1={sum(r == 1 for r in rs)/len(rs):5.1%}  "
