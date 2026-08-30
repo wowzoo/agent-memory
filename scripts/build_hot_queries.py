@@ -205,6 +205,12 @@ COMMENT = [
 ]
 
 
+def tilde(path: str) -> str:
+    """The stored absolute path with `$HOME` folded back to `~`, or unchanged."""
+    home = str(Path.home())
+    return f"~{path[len(home):]}" if path.startswith(home + "/") else path
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
@@ -223,7 +229,10 @@ def main() -> None:
             continue
         cases.append({
             "query": query,
-            "path": rows[0]["path"],
+            # `~`-relative, because this file is committed: the store keeps absolute
+            # paths, and writing them here puts one machine's home directory into the
+            # repository. Readers expand it (`eval_paraphrase.resolve_hot`).
+            "path": tilde(rows[0]["path"]),
             "heading": rows[0]["topic"],
             "block": block,
             "project": project,

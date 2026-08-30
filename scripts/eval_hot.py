@@ -31,9 +31,10 @@ DEPTH = 20
 
 
 def resolve_hot(con, path: str, heading: str) -> str | None:
+    """Fixture paths are `~`-relative; the store's are absolute. See eval_paraphrase."""
     rows = con.execute(
         "SELECT id FROM memories WHERE tier = 'hot' AND path = ? AND topic = ?",
-        (path, heading[:120]),
+        (str(Path(path).expanduser()), heading[:120]),
     ).fetchall()
     return rows[0]["id"] if len(rows) == 1 else None
 

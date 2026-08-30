@@ -38,10 +38,13 @@ def resolve_hot(con, path: str, heading: str) -> str | None:
     Its id is uuid5(path|heading|body-hash), so an id written into a fixture stops
     resolving the next time that section is edited; and headings repeat across files
     ('## 다음에 할 일'), so a prefix alone is not unique. Topics are stored truncated.
+
+    Fixture paths are `~`-relative so the committed file carries no home directory;
+    the store's are absolute, so expand before comparing.
     """
     rows = con.execute(
         "SELECT id FROM memories WHERE tier = 'hot' AND path = ? AND topic = ?",
-        (path, heading[:120]),
+        (str(Path(path).expanduser()), heading[:120]),
     ).fetchall()
     return rows[0]["id"] if len(rows) == 1 else None
 

@@ -19,7 +19,7 @@
   "cases": [
     {
       "query": "리랭킹 후보를 20보다 깊게 볼지 결론이 어떻게 났지",
-      "path": "/Users/wowzoo/.claude/projects/-Users-wowzoo-Development-agent-memory/memory/project-agent-memory-build.md",
+      "path": "~/.claude/projects/-Users-wowzoo-Development-agent-memory/memory/project-agent-memory-build.md",
       "heading": "rerank depth 20 — 판정 완료: 올리지 않는다 (2026-08-10, `24ba1a3`)",
       "block": "hot_only",
       "project": "agent-memory",
@@ -27,7 +27,7 @@
     },
     {
       "query": "회수 기본값으로 지금 워크스페이스만 뒤지게 할지 정했었나",
-      "path": "/Users/wowzoo/.claude/projects/-Users-wowzoo-Development-agent-memory/memory/project-agent-memory-build.md",
+      "path": "~/.claude/projects/-Users-wowzoo-Development-agent-memory/memory/project-agent-memory-build.md",
       "heading": "프로젝트 기본 범위 — 판정 완료: 걸지 않는다 (2026-08-21, 코드 변경 없음)",
       "block": "hot_only",
       "project": "agent-memory",
@@ -35,7 +35,7 @@
     },
     {
       "query": "크로스 인코더를 항상 켜기로 했나 옵션으로 뒀나",
-      "path": "/Users/wowzoo/.claude/projects/-Users-wowzoo-Development-agent-memory/memory/project-agent-memory-build.md",
+      "path": "~/.claude/projects/-Users-wowzoo-Development-agent-memory/memory/project-agent-memory-build.md",
       "heading": "리랭커 채택 완료 — 옵트인 (2026-08-10, `700ab93`)",
       "block": "hot_only",
       "project": "agent-memory",
@@ -43,7 +43,7 @@
     },
     {
       "query": "다른 워크스페이스 메모리 파일을 지웠는데 색인이 남던 버그",
-      "path": "/Users/wowzoo/.claude/projects/-Users-wowzoo-Development-agent-memory/memory/project-agent-memory-build.md",
+      "path": "~/.claude/projects/-Users-wowzoo-Development-agent-memory/memory/project-agent-memory-build.md",
       "heading": "다중 프로젝트 hot 삭제 결함 — 수정 완료 (2026-08-10, `58514ba`)",
       "block": "hot_only",
       "project": "agent-memory",
@@ -51,7 +51,7 @@
     },
     {
       "query": "저장된 본문 안에 엔티티 배열이 같이 들어가 있던 건 어떻게 처리했지",
-      "path": "/Users/wowzoo/.claude/projects/-Users-wowzoo-Development-agent-memory/memory/project-agent-memory-build.md",
+      "path": "~/.claude/projects/-Users-wowzoo-Development-agent-memory/memory/project-agent-memory-build.md",
       "heading": "cold 본문에 entities 배열이 섞여 저장된다 — 호출 측 문제, 경고만 넣었다 (2026-08-12)",
       "block": "hot_only",
       "project": "agent-memory",
@@ -59,7 +59,7 @@
     },
     {
       "query": "Kiro CLI 사용량이 어느 sqlite 에 쌓이나",
-      "path": "/Users/wowzoo/.claude/projects/-Users-wowzoo-Development-ai-dlc--single-source-of-truth-old-new-compare-v2/memory/kiro-credit-usage-measurement.md",
+      "path": "~/.claude/projects/-Users-wowzoo-Development-ai-dlc--single-source-of-truth-old-new-compare-v2/memory/kiro-credit-usage-measurement.md",
       "heading": "✅ Kiro CLI — 턴별 credit이 로컬에 남는다",
       "block": "hot_only",
       "project": "old-new-compare-v2",
@@ -67,7 +67,7 @@
     },
     {
       "query": "Kiro IDE 는 크레딧이 파일로 안 남는다고 확인한 근거",
-      "path": "/Users/wowzoo/.claude/projects/-Users-wowzoo-Development-ai-dlc--single-source-of-truth-old-new-compare-v2/memory/kiro-credit-usage-measurement.md",
+      "path": "~/.claude/projects/-Users-wowzoo-Development-ai-dlc--single-source-of-truth-old-new-compare-v2/memory/kiro-credit-usage-measurement.md",
       "heading": "❌ Kiro IDE — 로컬에 안 남는다",
       "block": "hot_only",
       "project": "old-new-compare-v2",
@@ -75,7 +75,7 @@
     },
     {
       "query": "하네스 일곱 중 하나만 인스톨러를 갖는다던 게 어느 하네스지",
-      "path": "/Users/wowzoo/.claude/projects/-Users-wowzoo-Development-ai-dlc--single-source-of-truth-old-new-compare-v2/memory/cursor-harness-has-installer.md",
+      "path": "~/.claude/projects/-Users-wowzoo-Development-ai-dlc--single-source-of-truth-old-new-compare-v2/memory/cursor-harness-has-installer.md",
       "heading": "cursor-harness-has-installer",
       "block": "hot_only",
       "project": "old-new-compare-v2",
@@ -83,7 +83,7 @@
     },
     {
       "query": "어댑터가 stdin 을 먼저 읽게 바뀐 상류 이슈 닫혔나",
-      "path": "/Users/wowzoo/.claude/projects/-Users-wowzoo-Development-ai-dlc--single-source-of-truth-old-new-compare-v2/memory/version-channel-conflict.md",
+      "path": "~/.claude/projects/-Users-wowzoo-Development-ai-dlc--single-source-of-truth-old-new-compare-v2/memory/version-channel-conflict.md",
       "heading": "version-channel-conflict",
       "block": "hot_only",
       "project": "old-new-compare-v2",
@@ -91,7 +91,7 @@
     },
     {
       "query": "내 PR 이 머지 안 되고 상류 다른 PR 로 대체됐던 건",
-      "path": "/Users/wowzoo/.claude/projects/-Users-wowzoo-Development-ai-dlc--single-source-of-truth-old-new-compare-v2/memory/issue-495-superseded-by-658.md",
+      "path": "~/.claude/projects/-Users-wowzoo-Development-ai-dlc--single-source-of-truth-old-new-compare-v2/memory/issue-495-superseded-by-658.md",
       "heading": "issue-495-superseded-by-658",
       "block": "hot_only",
       "project": "old-new-compare-v2",
@@ -99,7 +99,7 @@
     },
     {
       "query": "상류 로드맵에서 마이너 버전별 약속이 없어진 개편",
-      "path": "/Users/wowzoo/.claude/projects/-Users-wowzoo-Development-ai-dlc--single-source-of-truth-old-new-compare-v2/memory/upstream-roadmap-is-theme-based.md",
+      "path": "~/.claude/projects/-Users-wowzoo-Development-ai-dlc--single-source-of-truth-old-new-compare-v2/memory/upstream-roadmap-is-theme-based.md",
       "heading": "upstream-roadmap-is-theme-based",
       "block": "hot_only",
       "project": "old-new-compare-v2",
@@ -107,7 +107,7 @@
     },
     {
       "query": "산출물 폰트가 이 기계에 없어서 네트워크로 받는 문제 어떻게 정리했지",
-      "path": "/Users/wowzoo/.claude/projects/-Users-wowzoo-Development-aidlc-scale-assessment/memory/skill-state-and-facts.md",
+      "path": "~/.claude/projects/-Users-wowzoo-Development-aidlc-scale-assessment/memory/skill-state-and-facts.md",
       "heading": "폰트는 CDN 에서 온다 — 이대로 두기로 정했다 (2026-08-21)",
       "block": "hot_only",
       "project": "aidlc-scale-assessment",
@@ -115,7 +115,7 @@
     },
     {
       "query": "표면이 몇 배로 늘었을 때 전수 대조해서 거짓 양성이 몇 건이었나",
-      "path": "/Users/wowzoo/.claude/projects/-Users-wowzoo-Development-aidlc-scale-assessment/memory/skill-state-and-facts.md",
+      "path": "~/.claude/projects/-Users-wowzoo-Development-aidlc-scale-assessment/memory/skill-state-and-facts.md",
       "heading": "it.6 에서 확정된 것 — 표면이 늘어도 거짓 양성이 아니다",
       "block": "hot_only",
       "project": "aidlc-scale-assessment",
@@ -123,7 +123,7 @@
     },
     {
       "query": "결함을 일부러 심어 만든 입력으로 재면 안 되는 이유",
-      "path": "/Users/wowzoo/.claude/projects/-Users-wowzoo-Development-aidlc-scale-assessment/memory/skill-eval-method.md",
+      "path": "~/.claude/projects/-Users-wowzoo-Development-aidlc-scale-assessment/memory/skill-eval-method.md",
       "heading": "합성 집합은 스킬을 가리지 못한다 — 가장 큰 함정",
       "block": "hot_only",
       "project": "aidlc-scale-assessment",
@@ -131,7 +131,7 @@
     },
     {
       "query": "메인 루프로 돌리면 토큰 사용량이 안 남는다는 것",
-      "path": "/Users/wowzoo/.claude/projects/-Users-wowzoo-Development-aidlc-scale-assessment/memory/skill-eval-method.md",
+      "path": "~/.claude/projects/-Users-wowzoo-Development-aidlc-scale-assessment/memory/skill-eval-method.md",
       "heading": "비용은 서브에이전트로만 측정된다",
       "block": "hot_only",
       "project": "aidlc-scale-assessment",
@@ -139,7 +139,7 @@
     },
     {
       "query": "Bolt 단위가 상류 용어집과 엔진 동작에서 어긋난다던 것",
-      "path": "/Users/wowzoo/.claude/projects/-Users-wowzoo-Development-ws-studio-ai-dlc-ws-ai-dlc-1-day-workshop-working/memory/aidlc-bolt-unit-model.md",
+      "path": "~/.claude/projects/-Users-wowzoo-Development-ws-studio-ai-dlc-ws-ai-dlc-1-day-workshop-working/memory/aidlc-bolt-unit-model.md",
       "heading": "🔴 모델이 두 개다 — 이것이 혼동의 원인",
       "block": "hot_only",
       "project": "ai-dlc-1-day-workshop-working",
@@ -147,7 +147,7 @@
     },
     {
       "query": "cp -r 로 설치할 때 디렉터리가 한 겹 더 생기던 함정",
-      "path": "/Users/wowzoo/.claude/projects/-Users-wowzoo-Development-ws-studio-ai-dlc-ws-ai-dlc-1-day-workshop-working/memory/aidlc-v2-claude-install-prompt.md",
+      "path": "~/.claude/projects/-Users-wowzoo-Development-ws-studio-ai-dlc-ws-ai-dlc-1-day-workshop-working/memory/aidlc-v2-claude-install-prompt.md",
       "heading": "핵심 함정 — cp 중첩과 settings.local.json 우선순위",
       "block": "hot_only",
       "project": "ai-dlc-1-day-workshop-working",
@@ -155,7 +155,7 @@
     },
     {
       "query": "검증에서 금지어로 걸리는 옛 agent 이름들",
-      "path": "/Users/wowzoo/.claude/projects/-Users-wowzoo-Development-ws-studio-ai-dlc-ws-ai-dlc-1-day-workshop-working/memory/workshop-v2-resume.md",
+      "path": "~/.claude/projects/-Users-wowzoo-Development-ws-studio-ai-dlc-ws-ai-dlc-1-day-workshop-working/memory/workshop-v2-resume.md",
       "heading": "check-stale.js DENY 토큰 (위반하면 verify fail, whole-token)",
       "block": "hot_only",
       "project": "ai-dlc-1-day-workshop-working",
@@ -163,7 +163,7 @@
     },
     {
       "query": "센서 개수 판정이 뒤집힌 회차",
-      "path": "/Users/wowzoo/.claude/projects/-Users-wowzoo-Development-ws-studio-ai-dlc-ws-ai-dlc-1-day-workshop-working/memory/workshop-v2-history.md",
+      "path": "~/.claude/projects/-Users-wowzoo-Development-ws-studio-ai-dlc-ws-ai-dlc-1-day-workshop-working/memory/workshop-v2-history.md",
       "heading": "2026-07-26~28 — PPT 정리본 생성과 Sensor 개수 판정의 뒤집힘",
       "block": "hot_only",
       "project": "ai-dlc-1-day-workshop-working",
@@ -171,7 +171,7 @@
     },
     {
       "query": "장 안에서 카드를 클릭마다 하나씩 띄우지 말라는 규칙",
-      "path": "/Users/wowzoo/.claude/projects/-Users-wowzoo-Development-aidlc-v2-docs/memory/feedback_deck_no_per_component_reveal.md",
+      "path": "~/.claude/projects/-Users-wowzoo-Development-aidlc-v2-docs/memory/feedback_deck_no_per_component_reveal.md",
       "heading": "feedback_deck_no_per_component_reveal",
       "block": "hot_only",
       "project": "aidlc-v2-docs",
@@ -179,7 +179,7 @@
     },
     {
       "query": "pptx 를 직접 고치면 안 되는 이유",
-      "path": "/Users/wowzoo/.claude/projects/-Users-wowzoo-Development-aidlc-v2-docs/memory/project_aidlc_v2_docs_repo.md",
+      "path": "~/.claude/projects/-Users-wowzoo-Development-aidlc-v2-docs/memory/project_aidlc_v2_docs_repo.md",
       "heading": "🔴 이 repo 의 제1규칙 — 빌드 스크립트가 정본",
       "block": "hot_only",
       "project": "aidlc-v2-docs",
@@ -187,7 +187,7 @@
     },
     {
       "query": "이탤릭 쓰지 말라고 했던 지시",
-      "path": "/Users/wowzoo/.claude/projects/-Users-wowzoo-Development-aidlc-v2-docs/memory/feedback_no_italic_use_regular.md",
+      "path": "~/.claude/projects/-Users-wowzoo-Development-aidlc-v2-docs/memory/feedback_no_italic_use_regular.md",
       "heading": "feedback_no_italic_use_regular",
       "block": "hot_only",
       "project": "aidlc-v2-docs",
@@ -195,7 +195,7 @@
     },
     {
       "query": "위임 agent 에서는 훅이 아예 안 발화한다던 여덟 칸 전수 조사",
-      "path": "/Users/wowzoo/.claude/projects/-Users-wowzoo-Development-aidlc-v2-patch/memory/reference_kiro_unified_limits.md",
+      "path": "~/.claude/projects/-Users-wowzoo-Development-aidlc-v2-patch/memory/reference_kiro_unified_limits.md",
       "heading": "A. 안 된다 — 우리 수정으로 해결 불가 (harness 층이 막는다)",
       "block": "hot_only",
       "project": "aidlc-v2-patch",
@@ -203,7 +203,7 @@
     },
     {
       "query": "배포본 설정 파일이 내 모델·리전 설정을 덮어쓰던 발견",
-      "path": "/Users/wowzoo/.claude/projects/-Users-wowzoo-Development-aidlc-v2-patch/memory/project_v2_claude_harness_tree.md",
+      "path": "~/.claude/projects/-Users-wowzoo-Development-aidlc-v2-patch/memory/project_v2_claude_harness_tree.md",
       "heading": "🔴 열린 항목",
       "block": "hot_only",
       "project": "aidlc-v2-patch",
@@ -211,7 +211,7 @@
     },
     {
       "query": "직접 만든 첫 플러그인이 뭐였지",
-      "path": "/Users/wowzoo/.claude/projects/-Users-wowzoo-Development-aidlc-v2-patch/memory/reference_aidlc_plugin_mechanism.md",
+      "path": "~/.claude/projects/-Users-wowzoo-Development-aidlc-v2-patch/memory/reference_aidlc_plugin_mechanism.md",
       "heading": "⭐첫 자작 plugin 실증 — visual-mockups (2026-07-12, 구 figma-mockups)",
       "block": "hot_only",
       "project": "aidlc-v2-patch",
@@ -219,7 +219,7 @@
     },
     {
       "query": "stage 이름 누르면 산출물 목록 펼치는 기능 넣은 작업",
-      "path": "/Users/wowzoo/.claude/projects/-Users-wowzoo-Development-aidlc-v2-patch/memory/project_aidlc_dashboard.md",
+      "path": "~/.claude/projects/-Users-wowzoo-Development-aidlc-v2-patch/memory/project_aidlc_dashboard.md",
       "heading": "⭐ stage 별 산출물 아코디언 + 기본 편집기 열기 (2026-08-01, 커밋 `37d7b02`+`843345c`)",
       "block": "hot_only",
       "project": "aidlc-v2-patch",
@@ -227,7 +227,7 @@
     },
     {
       "query": "빈 장 검사를 따로 돌리는 스크립트로 뒀나 합쳤나",
-      "path": "/Users/wowzoo/.claude/projects/-Users-wowzoo-Development-aidlc-v2-docs/memory/project_html_deck_print_overflow.md",
+      "path": "~/.claude/projects/-Users-wowzoo-Development-aidlc-v2-docs/memory/project_html_deck_print_overflow.md",
       "heading": "✅ 이제는 `deck_to_pdf.py` 가 잡는다 (2026-08-20, 커밋 `53d77f9`)",
       "block": "hot_over_cold",
       "project": "aidlc-v2-docs",
@@ -235,7 +235,7 @@
     },
     {
       "query": "레일 접는 토글 넣은 날 무엇을 같이 했지",
-      "path": "/Users/wowzoo/.claude/projects/-Users-wowzoo-Development-aidlc-v2-docs/memory/project_html_deck_channel.md",
+      "path": "~/.claude/projects/-Users-wowzoo-Development-aidlc-v2-docs/memory/project_html_deck_channel.md",
       "heading": "2026-08-21 에 한 일 (커밋 `f2af33a`, `573346c`, `1fe4c9d`)",
       "block": "hot_over_cold",
       "project": "aidlc-v2-docs",
@@ -243,7 +243,7 @@
     },
     {
       "query": "발표덱을 왜 별도 repo 로 뗐지",
-      "path": "/Users/wowzoo/.claude/projects/-Users-wowzoo-Development-aidlc-v2-docs/memory/project_aidlc_v2_docs_repo.md",
+      "path": "~/.claude/projects/-Users-wowzoo-Development-aidlc-v2-docs/memory/project_aidlc_v2_docs_repo.md",
       "heading": "무엇이 왜 갈라졌나",
       "block": "hot_over_cold",
       "project": "aidlc-v2-docs",
@@ -251,7 +251,7 @@
     },
     {
       "query": "드롭 규칙 처음 적용했을 때 후보 몇 건 중 몇 건 남겼지",
-      "path": "/Users/wowzoo/.claude/projects/-Users-wowzoo-Development-agent-memory/memory/project-recall-query-collection.md",
+      "path": "~/.claude/projects/-Users-wowzoo-Development-agent-memory/memory/project-recall-query-collection.md",
       "heading": "첫 적용 (2026-08-12, `old-new-compare-v2` 세션)",
       "block": "hot_over_cold",
       "project": "agent-memory",
@@ -259,7 +259,7 @@
     },
     {
       "query": "MCP 도구 다섯 개를 실제 세션에서 호출해 검증한 회차",
-      "path": "/Users/wowzoo/.claude/projects/-Users-wowzoo-Development-agent-memory/memory/project-agent-memory-build.md",
+      "path": "~/.claude/projects/-Users-wowzoo-Development-agent-memory/memory/project-agent-memory-build.md",
       "heading": "2026-08-09 검증 완료분",
       "block": "hot_over_cold",
       "project": "agent-memory",
@@ -267,7 +267,7 @@
     },
     {
       "query": "비대화형 셸이 어느 rc 를 읽는지 안내가 틀렸던 것",
-      "path": "/Users/wowzoo/.claude/projects/-Users-wowzoo-Development-aidlc-v2-patch/memory/project_aidlc_workshop_content.md",
+      "path": "~/.claude/projects/-Users-wowzoo-Development-aidlc-v2-patch/memory/project_aidlc_workshop_content.md",
       "heading": "🔴 bash rc 안내가 틀렸었다 (두 프롬프트 모두)",
       "block": "hot_over_cold",
       "project": "aidlc-v2-patch",
@@ -275,7 +275,7 @@
     },
     {
       "query": "MARM 을 2.36.0 으로 올려 개념 그래프 설치한 작업",
-      "path": "/Users/wowzoo/.claude/projects/-Users-wowzoo-Development-aidlc-v2-patch/memory/project_v2_to_kiro_ide.md",
+      "path": "~/.claude/projects/-Users-wowzoo-Development-aidlc-v2-patch/memory/project_v2_to_kiro_ide.md",
       "heading": "이 세션 후반 (같은 날, 커밋 `ac7d60d`~`ddee355`)",
       "block": "hot_over_cold",
       "project": "aidlc-v2-patch",
@@ -283,7 +283,7 @@
     },
     {
       "query": "상류 2.5.40 훅 변경으로 우리 세대가 IDE 에서 안 먹던 것",
-      "path": "/Users/wowzoo/.claude/projects/-Users-wowzoo-Development-aidlc-v2-patch/memory/reference_upstream_kiro_ide_hook_wiring_gap.md",
+      "path": "~/.claude/projects/-Users-wowzoo-Development-aidlc-v2-patch/memory/reference_upstream_kiro_ide_hook_wiring_gap.md",
       "heading": "영향 — 두 세대가 IDE 에서 사문",
       "block": "hot_over_cold",
       "project": "aidlc-v2-patch",
@@ -291,7 +291,7 @@
     },
     {
       "query": "transcript 수치가 1.7배 부풀어 있던 대정정",
-      "path": "/Users/wowzoo/.claude/projects/-Users-wowzoo-Development-aidlc-v2-patch/memory/reference_claude_harness_run_cost.md",
+      "path": "~/.claude/projects/-Users-wowzoo-Development-aidlc-v2-patch/memory/reference_claude_harness_run_cost.md",
       "heading": "🔴🔴 2026-08-05 대정정 — 모든 transcript 수치가 1.7x 과다였다",
       "block": "hot_over_cold",
       "project": "aidlc-v2-patch",
@@ -299,7 +299,7 @@
     },
     {
       "query": "#417 과 #455 판정이 정리된 곳",
-      "path": "/Users/wowzoo/.claude/projects/-Users-wowzoo-Development-ai-dlc--single-source-of-truth-old-new-compare-v2/memory/aidlc-test-baseline-runstate.md",
+      "path": "~/.claude/projects/-Users-wowzoo-Development-ai-dlc--single-source-of-truth-old-new-compare-v2/memory/aidlc-test-baseline-runstate.md",
       "heading": "aidlc-test-baseline-runstate",
       "block": "hot_over_cold",
       "project": "old-new-compare-v2",
@@ -307,7 +307,7 @@
     },
     {
       "query": "2.2.14 에서 2.2.18 까지 릴리스 간격 정리한 계획",
-      "path": "/Users/wowzoo/.claude/projects/-Users-wowzoo-Development-ai-dlc--single-source-of-truth-old-new-compare-v2/memory/release-cadence-report-plan.md",
+      "path": "~/.claude/projects/-Users-wowzoo-Development-ai-dlc--single-source-of-truth-old-new-compare-v2/memory/release-cadence-report-plan.md",
       "heading": "release-cadence-report-plan",
       "block": "hot_over_cold",
       "project": "old-new-compare-v2",
@@ -315,7 +315,7 @@
     },
     {
       "query": "kiro-cli 2.18.0 에서 usage 서브커맨드가 먹히나",
-      "path": "/Users/wowzoo/.claude/projects/-Users-wowzoo-Development-ai-dlc--single-source-of-truth-old-new-compare-v2/memory/kiro-credit-usage-measurement.md",
+      "path": "~/.claude/projects/-Users-wowzoo-Development-ai-dlc--single-source-of-truth-old-new-compare-v2/memory/kiro-credit-usage-measurement.md",
       "heading": "❌ 공식 프로그래매틱 접근",
       "block": "hot_over_cold",
       "project": "old-new-compare-v2",
