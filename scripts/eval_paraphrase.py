@@ -20,6 +20,10 @@ from agent_memory import db, store  # noqa: E402
 
 FIXTURE = Path(__file__).resolve().parents[1] / "tests" / "data" / "paraphrase_queries.json"
 DEPTH = 20
+# `off` rather than "follow the config": every number this harness has ever produced is
+# an un-reranked baseline, and reranking became the default on 2026-08-30. Following the
+# config would silently redefine the denominator. `auto` is the production path.
+RERANK = {"off": False, "on": True, "auto": None}
 
 
 def resolve(con, topic_prefix: str) -> str | None:
@@ -75,8 +79,11 @@ def main() -> None:
     )
     parser.add_argument(
         "--rerank",
-        action="store_true",
-        help="rescore the fused head with the cross-encoder (hybrid only, ~3 s/query)",
+        choices=tuple(RERANK),
+        default="off",
+        help="off (default) is the baseline every past A/B was measured on; on forces "
+             "the cross-encoder past the gate (~3 s/query, hybrid only); auto follows "
+             "the config, which is what production does",
     )
     args = parser.parse_args()
 
@@ -98,13 +105,13 @@ def main() -> None:
     per_mode = {}
     # With --rerank only hybrid is measured: the reranker reorders whatever the lanes
     # fused, so pairing it with a single-lane baseline measures the baseline, not it.
-    modes = ("hybrid",) if args.rerank else ("lexical", "semantic", "hybrid")
+    modes = ("hybrid",) if args.rerank != "off" else ("lexical", "semantic", "hybrid")
     for mode in modes:
         ranks, misses = [], []
         for memory_id, query in resolved:
             results = store.recall(
                 con, query, limit=args.limit, detail=1, mode=mode, tier=args.tier,
-                rerank=args.rerank or None,
+                rerank=RERANK[args.rerank],
             )["results"]
             ids = [r["id"] for r in results]
             rank = ids.index(memory_id) + 1 if memory_id in ids else args.limit + 1
@@ -121,7 +128,7 @@ def main() -> None:
             for query, rank in misses:
                 print(f"      rank {rank:>3}  {query}")
 
-    if args.rerank:
+    if args.rerank != "off":
         con.close()
         return
 

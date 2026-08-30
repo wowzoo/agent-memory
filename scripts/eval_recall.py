@@ -37,7 +37,7 @@ def run(mode: str, cases: list[tuple[str, str]], project: str | None,
     for memory_id, query in cases:
         results = store.recall(
             con, query, limit=DEPTH, project=project, detail=1, mode=mode,
-            rerank=rerank or None,
+            rerank=rerank,
         )["results"]
         ids = [r["id"] for r in results]
         ranks.append(ids.index(memory_id) + 1 if memory_id in ids else DEPTH + 1)
@@ -56,7 +56,9 @@ def main() -> None:
     parser.add_argument("--project", default=None)
     parser.add_argument("--limit", type=int, default=None, help="cap the number of cases")
     parser.add_argument("--rerank", action="store_true",
-                        help="rescore the fused head with the cross-encoder (hybrid only)")
+                        help="rescore the fused head with the cross-encoder (hybrid "
+                             "only). Off means off, not 'follow the config' -- this "
+                             "fixture's numbers are a baseline")
     args = parser.parse_args()
 
     con = db.connect()

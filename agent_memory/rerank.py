@@ -1,4 +1,4 @@
-"""Cross-encoder reranking of the fused candidates. Off by default.
+"""Cross-encoder reranking of the fused candidates. On behind the gate.
 
 Measured on 72 paraphrase queries (cold, one store state, top 10 rescored):
 R@1 72.2% -> 91.7%, R@5 94.4% -> 98.6%, MRR 0.819 -> 0.943. That R@5 is the
@@ -8,10 +8,12 @@ but one in the top 5. The Korean finetune is what makes it work: the multilingua
 `Dongjin-kr/ko-reranker` wins by *replacing* the fused order outright, which is also
 why there is no weight to overfit here.
 
-It is off by default because it costs about 300 ms per candidate on CPU -- 3 s per
-recall at depth 10 against roughly 10 ms for the lanes alone. Turn it on for a
-question worth the wait, per call (`rerank=True`) or for the process
-(`AGENT_MEMORY_RERANK=1`).
+It costs about 300 ms per candidate on CPU -- 3 s per recall at depth 10 against roughly
+10 ms for the lanes alone -- so it was opt-in until 2026-08-30. What changed is
+`store._corroborated`: reranking every recall measured worse than reranking none, and
+reranking only the recalls whose top hit one lane never retrieved beats both. That is
+about one in six, so the mean bill is ~0.5 s. `rerank=True` forces it past the gate;
+`AGENT_MEMORY_RERANK=0` turns it off entirely.
 
 It also has a shape of question it loses on. Each candidate is judged in one pass over
 `topic + body` truncated to RERANK_MAX_TOKENS, so evidence past that window is invisible

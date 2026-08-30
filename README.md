@@ -263,8 +263,9 @@ export 해놓고 3점밖에 없었다는 걸 알게 되는 것보다 쌉니다 (
 - 되돌린 레버 둘: 본문을 256토큰으로 줄이면 지연은 반이 되지만 이득 대부분이 사라집니다
   (base 모델 기준 R@5 95.8%→94.4%). 모든 페어가 512토큰을 꽉 채우므로 잘라서 얻을 여지가 없습니다.
 
-**그래서 기본값은 off 입니다.** 300 ms/후보 × 10 = 3초는 레인만 돌 때의 10 ms 와 300배 차이입니다.
-`mem_recall(rerank=True)` 로 질문마다 고르거나 `AGENT_MEMORY_RERANK=1` 로 프로세스 전체를 켭니다.
+**300 ms/후보 × 10 = 3초는 레인만 돌 때의 10 ms 와 300배 차이입니다** — 그래서 게이트가 생기기 전까지
+기본값이 off 였습니다. 지금은 게이트가 여섯 번에 한 번만 지불하게 하므로 기본 on 이고, 평균 0.5초입니다.
+`mem_recall(rerank=True)` 는 게이트를 건너뛰고 강제하며, `AGENT_MEMORY_RERANK=0` 은 완전히 끕니다.
 모든 행은 융합 점수를 그대로 들고 있고, 응답의 `reranked` 가 "상위 N 은 `score` 가 아니라
 크로스인코더 순서다"를 알립니다.
 
@@ -399,8 +400,8 @@ oracle 이 열어 둔 R@5 5.3%p 중 2.4%p 를 **리랭커를 18% 만 돌려서**
   ⚠️ 대가는 `AGENT_MEMORY_RERANK=1` 이면 단독 레인 질의가 **전부** 3초를 낸다는 것입니다.
   단독 레인은 진단용이니 빠르게 훑을 때는 `rerank=False` 를 주십시오.
 
-`AGENT_MEMORY_RERANK` 의 기본값은 **여전히 `0`** 입니다 — 게이트는 그것을 켜도 안전하게 만드는
-장치이고, 기본값을 바꾸는 것은 별개 결정입니다.
+**2026-08-30 부터 `AGENT_MEMORY_RERANK` 의 기본값은 `1`** 입니다 — 게이트가 그것을 켜도 안전하게
+만들었기 때문이고, 그 순서가 중요합니다(게이트 없이 켜면 안 켠 것보다 나쁩니다).
 
 **프로덕션 경로 재현 확인 (2026-08-30)**: `AGENT_MEMORY_RERANK=1` 로 켜고 스크립트를 돌리면
 hot **36.8 / 84.2** (시뮬레이션과 소수점까지 동일), cold hybrid **65.3 / 79.2** (R@5 동일, R@1 은
@@ -467,7 +468,8 @@ LLM 이 쓴 설명을 접두해 top-20 실패를 35% 줄였다고 보고하는�
 
 진단이 지목한 부류(한 레인만 데려왔고 그 레인은 확신하는데 융합이 묻는다)를 정면으로 겨냥한
 규칙입니다: **두 베이스 레인 중 하나가 1위로 뽑았고 다른 레인이 그것을 아예 못 데려왔으면,
-호출자 창의 마지막 칸을 준다.** `AGENT_MEMORY_RESCUE_LANE_LEADERS`, 기본 `0`.
+호출자 창의 마지막 칸을 준다.** `AGENT_MEMORY_RESCUE_LANE_LEADERS`, **기본 `1`**(2026-08-30 채택 —
+손실 0·상수 0).
 
 가중치가 아니라 범주형입니다 — 티어 슬롯과 리랭크 게이트가 값을 한 것과 같은 성질이고, **튜닝할
 상수가 없습니다.** 점수 배수라면 상수가 하나 붙고, 이 저장소는 그런 것을 이미 두 번 기각했습니다.
@@ -923,9 +925,9 @@ python scripts/annotate.py batch.json
 | `AGENT_MEMORY_TOPIC_WEIGHT` / `_BODY_WEIGHT` | `3.0` / `1.0` (bm25 컬럼 가중) |
 | `AGENT_MEMORY_RRF_K` / `_CANDIDATE_POOL` | `10` / `50` (k 는 이 코퍼스 크기에 맞춰 60에서 내림) |
 | `AGENT_MEMORY_GRAPH_LANE_WEIGHT` / `_GRAPH_LANE_SEEDS` | `0.75` / `3` (`0`이면 그래프 레인 끔) |
-| `AGENT_MEMORY_RERANK` | `0` (`1`이면 게이트가 통과시킨 recall 만 리랭킹 — 실측 18%, 평균 0.5초) |
+| `AGENT_MEMORY_RERANK` | `1` (게이트가 통과시킨 recall 만 리랭킹 — 실측 여섯 번에 한 번, 평균 0.5초. `0`은 완전히 끔) |
 | `AGENT_MEMORY_RERANK_GATE` | `1` (1위를 모든 레인이 데려왔으면 리랭커를 건너뛴다. `0`이면 전부 리랭킹) |
-| `AGENT_MEMORY_RESCUE_LANE_LEADERS` | `0` (`1`이면 다른 레인이 못 데려온 레인 1위에게 창 마지막 칸을 준다 — hot R@5 +2.6%p, cold 무손실) |
+| `AGENT_MEMORY_RESCUE_LANE_LEADERS` | `1` (다른 레인이 못 데려온 레인 1위에게 창 마지막 칸을 준다 — hot R@5 +2.6%p, cold 무손실) |
 | `AGENT_MEMORY_RERANK_MODEL_DIR` | `$HOME/models/ko-reranker-int8` |
 | `AGENT_MEMORY_RERANK_DEPTH` / `_MAX_TOKENS` | `10` / `512` (깊이 20은 상한 100%, 지연 두 배) |
 | `AGENT_MEMORY_HOT_PATHS` | 현재 프로젝트의 Claude Code memory 디렉터리 |

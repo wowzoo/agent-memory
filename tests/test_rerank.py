@@ -29,10 +29,32 @@ def seed(db, store_module):
     return con
 
 
-def test_off_by_default(store):
-    db, store_module, _, _ = store
-    con = seed(db, store_module)
-    assert "reranked" not in store_module.recall(con, "한국어 검색")
+def test_the_shipped_defaults_are_on(store, monkeypatch):
+    """Guards the 2026-08-30 flip. Both were off, and the gate is what changed the
+    arithmetic; a shell exporting either variable would otherwise hide the regression."""
+    import importlib
+
+    for var in ("AGENT_MEMORY_RERANK", "AGENT_MEMORY_RESCUE_LANE_LEADERS",
+                "AGENT_MEMORY_RERANK_GATE"):
+        monkeypatch.delenv(var, raising=False)
+    from agent_memory import config as config_module
+
+    importlib.reload(config_module)
+    assert config_module.RERANK_ENABLED
+    assert config_module.RERANK_GATE
+    assert config_module.RESCUE_LANE_LEADERS
+
+
+def test_a_skipped_rerank_is_not_a_disabled_one(store, monkeypatch):
+    """With reranking on by default, an absent `reranked` key means the gate skipped it.
+    Worth pinning separately: this fixture points the reranker at an empty directory, so
+    a test that only checked for the absent key would pass for the wrong reason."""
+    db, store_module, config, _ = store
+    con = seed_with_graph(db, store_module)
+    monkeypatch.setattr(store_module, "_rerank", lambda *a: (a[1], True))
+    response = store_module.recall(con, "한국어 검색이 안 되던 원인")
+    assert "reranked" not in response
+    assert response["rerank_skipped"]
     con.close()
 
 
@@ -238,11 +260,14 @@ def test_rescue_leaves_a_leader_already_in_the_window(store):
     assert n == 0 and out == ranked
 
 
-def test_rescue_is_off_unless_asked_and_says_so_when_it_fires(store, monkeypatch):
+def test_rescue_reports_itself_only_when_it_fired(store, monkeypatch):
+    """Three seeded memories cannot overflow a five-row window, so nothing is rescued and
+    the key stays absent -- the caller learns the order is untouched."""
     db, store_module, config, _ = store
     con = seed(db, store_module)
     assert "rescued" not in store_module.recall(con, "한국어 검색")
-    monkeypatch.setattr(config, "RESCUE_LANE_LEADERS", True)
     monkeypatch.setattr(store_module, "_rescue_lane_leaders", lambda o, l, n: (o, 2))
     assert store_module.recall(con, "한국어 검색")["rescued"] == 2
+    monkeypatch.setattr(config, "RESCUE_LANE_LEADERS", False)
+    assert "rescued" not in store_module.recall(con, "한국어 검색")
     con.close()

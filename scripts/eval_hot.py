@@ -28,6 +28,8 @@ from agent_memory import db, store  # noqa: E402
 
 FIXTURE = Path(__file__).resolve().parents[1] / "tests" / "data" / "hot_queries.json"
 DEPTH = 20
+# See eval_paraphrase.py: the harness pins the baseline rather than following the config.
+RERANK = {"off": False, "on": True, "auto": None}
 
 
 def resolve_hot(con, path: str, heading: str) -> str | None:
@@ -54,7 +56,9 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--fixture", type=Path, default=FIXTURE)
     ap.add_argument("--mode", default="hybrid", choices=("lexical", "semantic", "hybrid"))
-    ap.add_argument("--rerank", action="store_true")
+    ap.add_argument("--rerank", choices=tuple(RERANK), default="off",
+                    help="off (default) = the baseline; on = force past the gate; "
+                         "auto = follow the config, i.e. what production does")
     ap.add_argument("--tier", choices=("hot", "cold"), default=None)
     ap.add_argument("--show-misses", action="store_true")
     ap.add_argument("--limit", type=int, default=DEPTH,
@@ -72,14 +76,14 @@ def main() -> None:
             continue
         results = store.recall(con, case["query"], limit=args.limit, detail=1,
                                mode=args.mode, tier=args.tier,
-                               rerank=args.rerank or None)["results"]
+                               rerank=RERANK[args.rerank])["results"]
         ids = [r["id"] for r in results]
         rank = ids.index(gold) + 1 if gold in ids else args.limit + 1
         rows.append({**case, "rank": rank,
                      "top_tier": results[0]["tier"] if results else None,
                      "top_topic": results[0]["topic"] if results else ""})
 
-    tag = f"mode={args.mode}" + (", rerank" if args.rerank else "")
+    tag = f"mode={args.mode}" + (f", rerank={args.rerank}" if args.rerank != "off" else "")
     tag += f", tier={args.tier}" if args.tier else ", both tiers"
     print(f"{len(rows)} hot cases ({tag})\n")
     print(line("overall", [r["rank"] for r in rows]))

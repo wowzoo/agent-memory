@@ -100,12 +100,19 @@ GRAPH_LANE_SEEDS = _int("AGENT_MEMORY_GRAPH_LANE_SEEDS", 3)
 # --- Reranking ---------------------------------------------------------------
 # A cross-encoder rescoring of the fused top RERANK_DEPTH. Measured on 72 paraphrase
 # queries (cold, one state): R@1 72.2% -> 91.7%, R@5 94.4% -> 98.6%, MRR 0.819 ->
-# 0.943, where 98.6% is the depth-10 ceiling. Off by default because it costs ~300 ms
-# per candidate on CPU -- 3 s per recall against ~10 ms for the lanes alone -- so the
-# caller decides per question whether the answer is worth the wait (`rerank=True`).
+# 0.943, where 98.6% is the depth-10 ceiling. It costs ~300 ms per candidate on CPU --
+# 3 s per recall against ~10 ms for the lanes alone -- which is why it was opt-in until
+# the gate existed. `rerank=True` still forces it for one question, gate and all.
 # Depth 10 rather than 20: 20 raises the ceiling to 100% but doubles the bill for the
 # one remaining case. See agent_memory/rerank.py and scripts/experiment_rerank.py.
-RERANK_ENABLED = os.environ.get("AGENT_MEMORY_RERANK", "0").lower() in ("1", "true", "yes")
+# On since 2026-08-30, and only because RERANK_GATE makes it safe: ungated, reranking
+# everything measured *worse* than reranking nothing (pooled R@1 55.9% vs 57.6%, R@5
+# 75.3% vs 82.9%). Gated it runs for about one recall in six, so the mean cost is around
+# 0.5 s rather than 3 s. Set to 0 for a latency-bound caller.
+# ⚠️ Single-lane modes are never gated -- one lane cannot corroborate itself -- so
+# `mode="lexical"` and `mode="semantic"` pay the full 3 s on every call with this on.
+# They are diagnostic paths; pass `rerank=False` when sweeping them.
+RERANK_ENABLED = os.environ.get("AGENT_MEMORY_RERANK", "1").lower() in ("1", "true", "yes")
 RERANK_MODEL_DIR = Path(
     os.environ.get("AGENT_MEMORY_RERANK_MODEL_DIR", HOME / "models" / "ko-reranker-int8")
 )
@@ -153,8 +160,9 @@ RERANK_GATE = os.environ.get("AGENT_MEMORY_RERANK_GATE", "1").lower() not in (
 # One case, and it is exactly the case the diagnosis named. Lowering RRF_K to 5 buys the
 # same hot R@5 by rewarding conviction everywhere, and pays cold R@5 2.8 points for it;
 # this buys it only where a lane stands alone.
+# On since 2026-08-30: it cost nothing measurable and no case anywhere got worse.
 RESCUE_LANE_LEADERS = os.environ.get(
-    "AGENT_MEMORY_RESCUE_LANE_LEADERS", "0"
+    "AGENT_MEMORY_RESCUE_LANE_LEADERS", "1"
 ).lower() in ("1", "true", "yes")
 
 # Slots reserved for a tier that relevance ranking would otherwise shut out. 0 = off.
