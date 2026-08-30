@@ -6,6 +6,8 @@ import re
 import sqlite3
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -69,6 +71,7 @@ def write(
     project: str | None = None,
     entities: list | None = None,
     relations: list | None = None,
+    supersedes: str | None = None,
 ) -> dict:
     content = content.strip()
     if not content:
@@ -124,6 +127,14 @@ def write(
             given = attached.get(f"{kind}_given", 0)
             if given != result["graph"][kind]:
                 result["graph"][f"{kind}_given"] = given
+    if supersedes:
+        # After the insert, so the correction is what the old row points at. Reported
+        # rather than raised: the memory is already stored and losing it because a
+        # reference did not resolve would be the worse failure.
+        marked = supersede(con, supersedes, memory_id)
+        result["supersedes"] = (
+            marked["superseded"] if marked["status"] == "ok" else marked["message"]
+        )
     stray = _entity_json_in(content)
     if stray:
         result["warning"] = (
@@ -132,6 +143,97 @@ def write(
             "copy of it and this memory's last chunk embeds JSON rather than prose."
         )
     return result
+
+
+# --------------------------------------------------------------- supersession
+
+
+def resolve_ref(con: sqlite3.Connection, ref: str) -> sqlite3.Row | None:
+    """A memory by id prefix, or a hot section by `path#heading`.
+
+    Two forms because the two tiers have different notions of a stable name. A cold id
+    is permanent. A hot id is `uuid5(path|heading|sha256(body))`, so it changes the next
+    time anyone edits that section -- storing one would leave a reference that quietly
+    stops resolving. `path#heading` survives body edits, which is the common case, and
+    is the same key `eval_paraphrase.resolve_hot` uses for the fixtures.
+    """
+    ref = (ref or "").strip()
+    if not ref:
+        return None
+    if "#" in ref:
+        path, _, heading = ref.partition("#")
+        rows = con.execute(
+            "SELECT * FROM memories WHERE tier = 'hot' AND path = ? AND topic = ?",
+            (str(Path(path).expanduser()) if path.startswith("~") else path,
+             heading.strip()[:120]),
+        ).fetchall()
+        return rows[0] if len(rows) == 1 else None
+    rows = con.execute(
+        "SELECT * FROM memories WHERE substr(id, 1, ?) = ?", (len(ref), ref)
+    ).fetchall()
+    return rows[0] if len(rows) == 1 else None
+
+
+def supersede(con: sqlite3.Connection, memory_id: str, by: str) -> dict:
+    """Mark `memory_id` as corrected by `by`, without touching ranking or content.
+
+    The archive cannot be edited -- that is what makes this necessary. A correction
+    arrives as a *new* memory, both versions then answer the same query, and the reader
+    has to work out which is current. Measured on the hot fixture: one confirmed case
+    where the stale cold copy took the top slot and the corrected hot section came
+    fourth, and the workaround in use is prose ("정정 — 이 항목이 우선한다") that only
+    helps if the reader happens to retrieve the newer memory too.
+
+    A hot row cannot be superseded. Its id is a hash of its body, so the mark would
+    vanish the next time that file is edited, and the answer there is to edit the file:
+    hot is the source of truth, not an archive of one.
+    """
+    row = resolve_ref(con, memory_id)
+    if row is None:
+        return {"status": "error", "message": f"no single memory matches {memory_id!r}"}
+    if row["tier"] == "hot":
+        return {
+            "status": "error",
+            "message": "a hot section is a file, not an archived copy — edit the file "
+                       f"instead: {row['path']}",
+        }
+    target = resolve_ref(con, by)
+    if target is None:
+        return {
+            "status": "error",
+            "message": f"no single memory matches {by!r}. Use an id prefix, or "
+                       "'path#heading' for a hot section",
+        }
+    if target["id"] == row["id"]:
+        return {"status": "error", "message": "a memory cannot supersede itself"}
+    con.execute(
+        "UPDATE memories SET superseded_by = ?, superseded_at = ? WHERE id = ?",
+        (by.strip(), _now(), row["id"]),
+    )
+    con.commit()
+    return {
+        "status": "ok",
+        "superseded": {"id": row["id"], "topic": row["topic"]},
+        "by": {"id": target["id"], "topic": target["topic"], "tier": target["tier"]},
+    }
+
+
+def _supersession(con: sqlite3.Connection, row: sqlite3.Row) -> dict | None:
+    """The `superseded_by` block on a recall result, resolved where it can be."""
+    ref = row["superseded_by"] if "superseded_by" in row.keys() else None
+    if not ref:
+        return None
+    block: dict[str, Any] = {"ref": ref, "at": row["superseded_at"]}
+    target = resolve_ref(con, ref)
+    if target is None:
+        # Said out loud rather than dropped: a reference that stopped resolving is
+        # itself information -- most likely the heading of a hot section changed.
+        block["resolved"] = False
+        return block
+    block.update({"id": target["id"], "topic": target["topic"], "tier": target["tier"]})
+    if target["tier"] == "hot":
+        block["path"] = target["path"]
+    return block
 
 
 # -------------------------------------------------------------------------- recall
@@ -458,7 +560,8 @@ def recall(
     rows = {
         r["id"]: r
         for r in con.execute(
-            "SELECT id, session, project, topic, content, created_at, tier, path "
+            "SELECT id, session, project, topic, content, created_at, tier, path, "
+            "superseded_by, superseded_at "
             f"FROM memories WHERE id IN ({','.join('?' * len(scores))})",
             list(scores),
         )
@@ -526,6 +629,9 @@ def recall(
         }
         if row["tier"] == "hot":
             entry["path"] = row["path"]
+        superseded = _supersession(con, row)
+        if superseded:
+            entry["superseded_by"] = superseded
         results.append(entry)
 
     response = {

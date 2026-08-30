@@ -4,7 +4,7 @@ import sqlite3
 
 from . import config
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS memories (
@@ -18,7 +18,18 @@ CREATE TABLE IF NOT EXISTS memories (
     -- 'cold' = archived in this database, 'hot' = mirrored from a Claude Code
     -- memory file, which is the source of truth. See hot.py.
     tier        TEXT NOT NULL DEFAULT 'cold',
-    path        TEXT
+    path        TEXT,
+    -- What replaced this memory, when it has been corrected by a later one. A
+    -- reference, not a foreign key: a hot section's id is a hash of its body and dies
+    -- on the next edit of that file, so `path#heading` has to be expressible too. See
+    -- store.supersede.
+    --
+    -- Ranking ignores this on purpose. A flat penalty is the mirror image of the hot
+    -- boost that was measured and rejected, and the fixture case this exists for is a
+    -- cold memory that *deserves* its rank -- it is the fuller account, it is just no
+    -- longer current. What the reader needs is to be told, not to have it hidden.
+    superseded_by TEXT,
+    superseded_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_memories_session ON memories(session);
 CREATE INDEX IF NOT EXISTS idx_memories_created ON memories(created_at DESC);
@@ -129,6 +140,11 @@ def _migrate(con: sqlite3.Connection) -> None:
     CREATE TABLE IF NOT EXISTS does nothing to a table that already exists, so a
     column added to the DDL above never appears in a store created before it.
     """
+    columns = {row[1] for row in con.execute("PRAGMA table_info(memories)")}
+    for column in ("superseded_by", "superseded_at"):
+        if column not in columns:
+            con.execute(f"ALTER TABLE memories ADD COLUMN {column} TEXT")
+
     columns = {row[1] for row in con.execute("PRAGMA table_info(hot_files)")}
     if "project" not in columns:
         con.execute("ALTER TABLE hot_files ADD COLUMN project TEXT")
