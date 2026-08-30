@@ -457,9 +457,17 @@ def _rescue_lane_leaders(
         position = next((i for i, (mid, _) in enumerate(ranked) if mid == leader), None)
         if position is None or position < limit:
             continue
+        # Each rescue gets its own slot. Both used to be inserted at `limit - 1`, which
+        # pushed the first one straight back out: `rescued` reported 2 and the caller saw
+        # one -- measured on the hot fixture, where the gold section a lane was certain
+        # about ended at rank 6 because the other lane's leader took the same slot. So a
+        # second rescue displaces the weakest *unrescued* row instead.
+        slot = limit - 1 - rescued
+        if slot < 1:
+            break
         row = ranked[position]
-        ranked = (ranked[: limit - 1] + [row]
-                  + ranked[limit - 1 : position] + ranked[position + 1 :])
+        ranked = (ranked[:slot] + ranked[slot + 1 : limit] + [row, ranked[slot]]
+                  + ranked[limit:position] + ranked[position + 1 :])
         rescued += 1
     return ranked, rescued
 

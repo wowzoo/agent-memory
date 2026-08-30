@@ -243,6 +243,22 @@ def test_rescue_promotes_an_uncorroborated_lane_leader(store):
     assert [mid for mid, _ in out][5:] == ["m4", "m5", "m7"]
 
 
+def test_two_rescues_do_not_share_one_slot(store):
+    """Each lane certain about a different memory: both reach the window.
+
+    Inserting both at `limit - 1` put the second one on top of the first and pushed it
+    out, so `rescued` counted two and the caller received one.
+    """
+    _, store_module, _, _ = store
+    ranked = [(f"m{i}", 1.0 - i / 100) for i in range(8)]
+    lanes = {"lexical": ["m6"], "semantic": ["m7"], "graph": []}
+    out, n = store_module._rescue_lane_leaders(ranked, lanes, limit=5)
+    assert n == 2
+    assert [mid for mid, _ in out][:5] == ["m0", "m1", "m2", "m6", "m7"]
+    # The two rows they displaced are still there, just below the window.
+    assert [mid for mid, _ in out][5:] == ["m3", "m4", "m5"]
+
+
 def test_rescue_ignores_a_leader_another_lane_also_found(store):
     """Corroborated hits already had their say in the fusion, twice."""
     _, store_module, _, _ = store

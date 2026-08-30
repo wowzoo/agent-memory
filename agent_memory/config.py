@@ -178,9 +178,18 @@ RESCUE_LANE_LEADERS = os.environ.get(
 #   - strict tier interleaving: recovered R@5 to 80% but pinned R@1 at 0% by always
 #     spending slot 1 on a hot row, and cost MRR (0.394 vs 0.520 for one pool).
 #
-# So: rank everything on relevance alone, then guarantee each tier a couple of slots.
+# So: rank everything on relevance alone, then guarantee each tier a slot.
 # Relevance decides the order; this only decides that neither tier disappears.
-MIN_TIER_SLOTS = _int("AGENT_MEMORY_MIN_TIER_SLOTS", 2)
+#
+# One slot rather than two since 2026-08-30, when the number itself was measured for the
+# first time -- and in the window a caller actually gets, which is the only one where it
+# acts at all. At `limit=5`, 0, 1 and 2 are identical on the cold fixture and 2 costs one
+# hot_over_cold case, because the reranker (on by default since the same day) already
+# recovers the two cold rows the second slot used to buy. With `AGENT_MEMORY_RERANK=0`
+# those two come back, so 2 is right for a caller who turns reranking off. Above 2 the
+# guarantees contradict each other in a five-row window and the hot pass, running second,
+# wins: reserving 3 puts three cold answers out of the window.
+MIN_TIER_SLOTS = _int("AGENT_MEMORY_MIN_TIER_SLOTS", 1)
 
 # Set to "0"/"false" to stop mirroring Claude Code memory files entirely.
 HOT_ENABLED = os.environ.get("AGENT_MEMORY_HOT", "1").lower() not in ("0", "false", "no")
