@@ -24,6 +24,7 @@ maintained by the agent's own memory tooling; we mirror them for retrieval.
 import hashlib
 import os
 import re
+import sqlite3
 import uuid
 from pathlib import Path
 
@@ -193,17 +194,8 @@ def _index_file(
     return len(wanted), len(existing & wanted.keys())
 
 
-def sync(con, force: bool = False) -> dict:
-    """Bring the hot mirror in line with the files on disk.
-
-    Called before every recall. The cheap part -- stat + hash of a few dozen files --
-    runs every time; embedding only runs for sections whose content actually changed,
-    so a warm store adds milliseconds rather than re-encoding hundreds of sections.
-
-    `force` means rebuild, not just re-check: it drops each file's mirror so every
-    section is embedded again, which is what a model swap needs. Without it, sections
-    that still hash the same are left alone, vectors and graph annotations included.
-    """
+def _state(con) -> tuple[dict, dict]:
+    """What the mirror holds: per-file (mtime, size, hash), and per-directory owner."""
     known = {
         row["path"]: (row["mtime"], row["size"], row["hash"])
         for row in con.execute("SELECT path, mtime, size, hash FROM hot_files")
@@ -222,17 +214,71 @@ def sync(con, force: bool = False) -> dict:
         directory = row["path"].rsplit("/", 1)[0]
         known_project, known_agent = owner.get(directory, (None, None))
         owner[directory] = (known_project or row["project"], known_agent or row["agent"])
-    present = _files()
-    directories = {str(d) for d in hot_dirs()}
-    project = agent = None
-    stats = {"indexed": 0, "sections": 0, "kept": 0, "removed": 0, "unchanged": 0}
+    return known, owner
 
-    for path in present:
-        key = str(path)
+
+def _dirty(known: dict, digests: dict, directories: set[str]) -> bool:
+    """Whether `sync` has anything to write: a changed or new file, or a vanished one
+    inside a directory this process mirrors (the same rule the removal loop applies)."""
+    if any(known.get(key, (None, None, None))[2] != digest
+           for key, digest in digests.items()):
+        return True
+    return any(key not in digests and str(Path(key).parent) in directories
+               for key in known)
+
+
+def sync(con, force: bool = False) -> dict:
+    """Bring the hot mirror in line with the files on disk.
+
+    Called before every recall. The cheap part -- stat + hash of a few dozen files --
+    runs every time; embedding only runs for sections whose content actually changed,
+    so a warm store adds milliseconds rather than re-encoding hundreds of sections.
+
+    `force` means rebuild, not just re-check: it drops each file's mirror so every
+    section is embedded again, which is what a model swap needs. Without it, sections
+    that still hash the same are left alone, vectors and graph annotations included.
+    """
+    digests = {}
+    for path in _files():
         try:
-            _, _, digest = _digest(path)
+            digests[str(path)] = _digest(path)[2]
         except OSError:
             continue
+    directories = {str(d) for d in hot_dirs()}
+    stats = {"indexed": 0, "sections": 0, "kept": 0, "removed": 0, "unchanged": 0}
+
+    known, owner = _state(con)
+    if not force and not _dirty(known, digests, directories):
+        stats["unchanged"] = len(digests)
+        return stats
+
+    # Every harness on a project mirrors the same directory, and section ids are
+    # deterministic, so two processes that both see a file changed compute the same
+    # ids. Deciding what to write from a read taken outside the write lock let the
+    # second one insert ids the first had just committed, and its whole recall died
+    # with IntegrityError (reproduced with two processes, 2026-09-24). So take the lock
+    # first and decide again under it: a process that waited finds the other's work
+    # already there and has nothing left to do. Only when there is work -- a sync with
+    # nothing to do never takes the lock, so the common recall stays read-only.
+    opened = False
+    if not con.in_transaction:
+        try:
+            con.execute("BEGIN IMMEDIATE")
+        except sqlite3.OperationalError as exc:
+            # Another process has held the lock past the busy timeout, which a full
+            # first index of a large directory can do. It is mirroring these same
+            # files, so answer from the mirror as it stands rather than failing the
+            # recall; the next one catches up.
+            if "locked" not in str(exc):
+                raise
+            stats["busy"] = True
+            return stats
+        opened = True
+        known, owner = _state(con)
+
+    project = agent = None
+    for key, digest in digests.items():
+        path = Path(key)
         cached = known.pop(key, None)
         if not force and cached and cached[2] == digest:
             stats["unchanged"] += 1
@@ -267,6 +313,6 @@ def sync(con, force: bool = False) -> dict:
         _drop(con, stale)
         stats["removed"] += 1
 
-    if stats["indexed"] or stats["removed"]:
+    if stats["indexed"] or stats["removed"] or opened:
         con.commit()
     return stats

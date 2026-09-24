@@ -287,3 +287,62 @@ def test_a_directory_keeps_the_project_that_first_indexed_it(store, monkeypatch,
     assert project_of("완전히 다른 주제") == "theirs"
     assert project_of("첫 번째 주제") == "mine"
     con.close()
+
+
+def test_two_processes_mirroring_one_directory_do_not_collide(store, monkeypatch):
+    """Two harnesses on one project (Claude + Codex) both re-index a hot file the moment
+    it changes. Section ids are deterministic, so both compute the same ids; the one
+    that read `existing` before the other committed then inserted an id that already
+    existed and its whole recall died with IntegrityError. Reproduced with two real
+    processes before the fix (2026-09-24).
+
+    Made deterministic here: two connections on two threads meet at a barrier right
+    after parsing the file -- inside the window between reading `existing` and the
+    first INSERT. After the fix the second one never reaches that point until the
+    first has committed, so the barrier times out and it finds nothing left to do.
+    """
+    import threading
+
+    hot_dir, db, hot, _ = store
+    (hot_dir / "a.md").write_text(MEMORY_A + "\n" + MEMORY_B, encoding="utf-8")
+    db.connect().close()  # schema first, so the threads do not also race on DDL
+
+    barrier = threading.Barrier(2)
+    real_sections = hot._sections
+
+    def meet_in_the_window(text, fallback_topic):
+        sections = real_sections(text, fallback_topic)
+        try:
+            barrier.wait(timeout=2)
+        except threading.BrokenBarrierError:
+            pass
+        return sections
+
+    monkeypatch.setattr(hot, "_sections", meet_in_the_window)
+
+    results, errors = [], []
+
+    def mirror():
+        con = db.connect()
+        try:
+            results.append(hot.sync(con))
+        except Exception as exc:  # noqa: BLE001 -- the assertion reports it
+            errors.append(exc)
+        finally:
+            con.close()
+
+    threads = [threading.Thread(target=mirror) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert errors == []
+    assert sorted(r["indexed"] for r in results) == [0, 1]
+
+    con = db.connect()
+    memories = con.execute("SELECT COUNT(*) FROM memories").fetchone()[0]
+    assert memories == 2
+    assert con.execute("SELECT COUNT(*) FROM memories_fts").fetchone()[0] == memories
+    assert orphan_count(con) == 0
+    con.close()
