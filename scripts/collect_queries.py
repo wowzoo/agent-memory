@@ -43,6 +43,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from agent_memory import config, db  # noqa: E402
+from build_hot_queries import tilde  # noqa: E402
 from eval_paraphrase import resolve, resolve_hot  # noqa: E402
 
 DROPS = Path(config.HOME) / "recall-log"
@@ -82,12 +83,32 @@ def _narrow_window(drop: dict) -> str:
     return ""
 
 
+def _moved(con, path: str, heading: str) -> str | None:
+    """The same section after its project directory moved.
+
+    A drop records the path as it was when the query was asked, and projects move
+    (measured 2026-09-13: four of four collected cases pointed at directories that no
+    longer existed). The observation is still valid, so the file name and heading --
+    which the move does not change -- are used to find where the section went. Only a
+    unique match counts; the same file name under two projects resolves to nothing.
+    """
+    name = Path(path).name
+    # Suffix comparison, not LIKE: these file names contain `_`, which LIKE treats as a
+    # single-character wildcard (see the same fix in build_hot_queries.py).
+    rows = con.execute(
+        "SELECT id FROM memories WHERE tier = 'hot' "
+        "AND substr(path, length(path) - ? + 1) = ? AND topic = ?",
+        (len(name) + 1, f"/{name}", heading[:120]),
+    ).fetchall()
+    return rows[0]["id"] if len(rows) == 1 else None
+
+
 def _resolve(con, target: dict) -> tuple[str | None, str]:
     if target.get("tier") == "hot":
         path, heading = target.get("path"), target.get("heading")
         if not path or not heading:
             return None, "hot target needs both path and heading"
-        memory_id = resolve_hot(con, path, heading)
+        memory_id = resolve_hot(con, path, heading) or _moved(con, path, heading)
         return memory_id, "" if memory_id else "path+heading matches no single section"
     prefix = target.get("topic_match")
     if not prefix:
@@ -126,7 +147,6 @@ def main() -> None:
                 usable.append((path, drop, memory_id))
         if complaint:
             rejected.append((path, drop, complaint))
-    con.close()
 
     print(f"{len(drops)} drops in {args.drops}\n")
     for path, drop, memory_id in usable:
@@ -163,12 +183,20 @@ def main() -> None:
         return
 
     cases = []
-    for _, drop, _ in usable:
+    for _, drop, memory_id in usable:
         target = drop["target"]
         case = {"query": drop["query"].strip()}
         if target.get("tier") == "hot":
-            case["path"] = target["path"]
-            case["heading"] = target["heading"]
+            # The store's coordinates for the section that was resolved, not the drop's.
+            # A drop records where the section was when the query was asked, and
+            # `_moved` accepts it after the project moved -- but the fixture is read by
+            # `resolve_hot`, which matches the path exactly. Writing the drop's path
+            # through emits a case that resolves here and nowhere else.
+            row = con.execute(
+                "SELECT path, topic FROM memories WHERE id = ?", (memory_id,)
+            ).fetchone()
+            case["path"] = tilde(row["path"])
+            case["heading"] = row["topic"]
         else:
             case["topic_match"] = target["topic_match"]
         cases.append(case)
@@ -191,6 +219,7 @@ def main() -> None:
         + "\n",
         encoding="utf-8",
     )
+    con.close()
     print(f"\n  wrote {len(cases)} cases to {args.to_cases}"
           f"  ({len(rejected)} drop(s) left out — see SKIP above)")
 

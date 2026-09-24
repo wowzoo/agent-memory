@@ -58,23 +58,23 @@ CASES = [
      "cold 본문에 entities 배열이 섞여 저장된다",
      "저장된 본문 안에 엔티티 배열이 같이 들어가 있던 건 어떻게 처리했지", "topic_echo"),
 
-    # ---------------------------------------------------------- old-new-compare-v2
-    ("hot_only", "old-new-compare-v2", "kiro-credit-usage-measurement.md",
+    # --------------------------------------------------------------- version-tracker
+    ("hot_only", "version-tracker", "kiro-credit-usage-measurement.md",
      "✅ Kiro CLI",
      "Kiro CLI 사용량이 어느 sqlite 에 쌓이나", "id_recall"),
-    ("hot_only", "old-new-compare-v2", "kiro-credit-usage-measurement.md",
+    ("hot_only", "version-tracker", "kiro-credit-usage-measurement.md",
      "❌ Kiro IDE",
      "Kiro IDE 는 크레딧이 파일로 안 남는다고 확인한 근거", "id_recall"),
-    ("hot_only", "old-new-compare-v2", "cursor-harness-has-installer.md",
+    ("hot_only", "version-tracker", "cursor-harness-has-installer.md",
      "cursor-harness-has-installer",
      "하네스 일곱 중 하나만 인스톨러를 갖는다던 게 어느 하네스지", "id_recall"),
-    ("hot_only", "old-new-compare-v2", "version-channel-conflict.md",
+    ("hot_only", "version-tracker", "version-channel-conflict.md",
      "version-channel-conflict",
      "어댑터가 stdin 을 먼저 읽게 바뀐 상류 이슈 닫혔나", "id_recall"),
-    ("hot_only", "old-new-compare-v2", "issue-495-superseded-by-658.md",
+    ("hot_only", "version-tracker", "issue-495-superseded-by-658.md",
      "issue-495-superseded-by-658",
      "내 PR 이 머지 안 되고 상류 다른 PR 로 대체됐던 건", "id_recall"),
-    ("hot_only", "old-new-compare-v2", "upstream-roadmap-is-theme-based.md",
+    ("hot_only", "version-tracker", "upstream-roadmap-is-theme-based.md",
      "upstream-roadmap-is-theme-based",
      "상류 로드맵에서 마이너 버전별 약속이 없어진 개편", "id_recall"),
 
@@ -175,13 +175,13 @@ CASES = [
     ("hot_over_cold", "aidlc-v2-patch", "reference_claude_harness_run_cost.md",
      "🔴🔴 2026-08-05 대정정",
      "transcript 수치가 1.7배 부풀어 있던 대정정", "topic_echo"),
-    ("hot_over_cold", "old-new-compare-v2", "aidlc-test-baseline-runstate.md",
+    ("hot_over_cold", "version-tracker", "aidlc-test-baseline-runstate.md",
      "aidlc-test-baseline-runstate",
      "#417 과 #455 판정이 정리된 곳", "id_recall"),
-    ("hot_over_cold", "old-new-compare-v2", "release-cadence-report-plan.md",
+    ("hot_over_cold", "version-tracker", "release-cadence-report-plan.md",
      "release-cadence-report-plan",
      "2.2.14 에서 2.2.18 까지 릴리스 간격 정리한 계획", "id_recall"),
-    ("hot_over_cold", "old-new-compare-v2", "kiro-credit-usage-measurement.md",
+    ("hot_over_cold", "version-tracker", "kiro-credit-usage-measurement.md",
      "❌ 공식 프로그래매틱 접근",
      "kiro-cli 2.18.0 에서 usage 서브커맨드가 먹히나", "id_recall"),
 ]
@@ -217,16 +217,29 @@ def main() -> None:
     args = ap.parse_args()
 
     con = db.connect()
-    cases, failed = [], []
+    cases, failed, renamed = [], [], []
     for block, project, fname, prefix, query, authored in CASES:
+        # Not filtered on `project`: a project's label follows its directory, so moving
+        # or renaming one silently unresolves every case anchored to it (measured
+        # 2026-09-13, three labels at once: old-new-compare-v2 -> version-tracker,
+        # aidlc-v2-patch -> aidlc-patch-workbench, aidlc-v2-docs -> v2-docs). The
+        # (file name, heading) pair already has to be unique -- cases whose subject two
+        # projects hold are excluded by the authoring rules above -- so the label is
+        # read back from the store rather than matched against.
+        # File name compared with rtrim/instr rather than LIKE: these names are full of
+        # `_` (project_aidlc_v2_docs_repo.md), which LIKE reads as "any character", so
+        # `project_v2_to_kiro_ide.md` would also match `project-v2-to-kiro-ide.md`.
+        # `eval_paraphrase.resolve` avoids LIKE for exactly this reason.
         rows = con.execute(
-            "SELECT path, topic FROM memories WHERE tier = 'hot' AND project = ? "
-            "AND path LIKE ? AND substr(topic, 1, ?) = ?",
-            (project, f"%/{fname}", len(prefix), prefix),
+            "SELECT path, topic, project FROM memories WHERE tier = 'hot' "
+            "AND substr(path, length(path) - ? + 1) = ? AND substr(topic, 1, ?) = ?",
+            (len(fname) + 1, f"/{fname}", len(prefix), prefix),
         ).fetchall()
         if len(rows) != 1:
             failed.append((project, fname, prefix, len(rows)))
             continue
+        if rows[0]["project"] != project:
+            renamed.append((project, rows[0]["project"], fname))
         cases.append({
             "query": query,
             # `~`-relative, because this file is committed: the store keeps absolute
@@ -235,12 +248,14 @@ def main() -> None:
             "path": tilde(rows[0]["path"]),
             "heading": rows[0]["topic"],
             "block": block,
-            "project": project,
+            "project": rows[0]["project"],
             "authored_from": authored,
         })
 
     for project, fname, prefix, n in failed:
         print(f"  ! {n} matches (need 1): {project} {fname} :: {prefix}")
+    for old, new, fname in renamed:
+        print(f"  ~ project renamed since authoring: {old} -> {new} ({fname})")
     print(f"resolved {len(cases)}/{len(CASES)} cases")
     for name, want in (("hot_only", "hot_only"), ("hot_over_cold", "hot_over_cold")):
         print(f"    {name:14} {sum(c['block'] == want for c in cases)}")
