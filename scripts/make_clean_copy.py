@@ -1,21 +1,33 @@
 """Build a store copy with this round's own evaluation records removed.
 
-Measurement hygiene ① in the README: this repository's hot tier indexes its own project
-memory file, so the moment a session writes down "the miss list was these queries", BM25
+Measurement hygiene ① in `docs/measurements.md`: this repository's hot tier indexes its own
+project memory file, so the moment a session writes down "the miss list was these queries",
+BM25
 starts answering those queries with the *record* instead of the memory. Every ranking A/B
 since 2026-08-30 has therefore been measured on a copy with that day's sections dropped
 -- by hand, twice, which is how a hygiene rule quietly stops being followed.
 
     python scripts/make_clean_copy.py                       # today's sections
     python scripts/make_clean_copy.py --date 2026-08-30
-    AGENT_MEMORY_DB=/tmp/agent-memory-clean.db python scripts/eval_hot.py --limit 5
+    AGENT_MEMORY_DB=/tmp/agent-memory-clean.db \
+    AGENT_MEMORY_HOT_PATHS=/tmp/no-such-hot-dir \
+        python scripts/eval_hot.py --limit 5
+
+🔴 `AGENT_MEMORY_HOT_PATHS` is not optional, and leaving it off silently undoes this
+script. `recall()` calls `hot.sync()` whenever `tier != "cold"`, so one hot-inclusive
+query re-indexes the memory files from disk and puts every dropped section back:
+measured 2026-09-13, a single `recall` on a fresh copy took hot 1,618 -> 1,622 and
+restored all four of the day's records. Pointing the variable at a directory that does
+not exist leaves `hot_dirs()` with nothing to mirror, so `sync` is a no-op (verified:
+`indexed 0`, row count unchanged). `eval_paraphrase.py --tier cold` is the one harness
+that does not need it, which is why cold was the tier the hygiene rule was written on.
 
 Only this project's own records are touched. Another project's sections written the same
 day are not contamination -- they are corpus, and removing them would move the baseline
 (which is its own recorded mistake: syncing someone else's hot tier broke the fixture
 anchors).
 
-⚠️ Both tiers, which the README's rule did not say. The rule was written about hot
+⚠️ Both tiers, which the documented rule did not say. The rule was written about hot
 sections because that is where it was caught, but a round also writes cold records with
 `mem_write`, and those bury the answer exactly as well: measured 2026-08-30, the archived
 record *"2026-08-30 리랭크 축 종결"* sits at rank 2 for the hot fixture's own
@@ -34,12 +46,18 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from agent_memory import config  # noqa: E402
+from agent_memory import config, hot  # noqa: E402
 
 # The hot file and the cold project whose records are this repository's self-observation.
-OWN_MEMORY = str(Path(
-    "~/.claude/projects/-Users-wowzoo-Development-agent-memory/memory"
-).expanduser())
+# Derived, not written down: this repository moved on 2026-09-07 and the constant kept
+# naming the old directory, so for six days the copy dropped nothing and every A/B ran
+# on a contaminated store. The slug is how `hot.default_hot_dir` builds the same path,
+# so it follows the source wherever it lives next.
+OWN_MEMORY = str(
+    Path.home() / ".claude" / "projects"
+    / hot._SLUG_CHARS.sub("-", str(Path(__file__).resolve().parents[1]))
+    / "memory"
+)
 PROJECT = "agent-memory"
 FIXTURES = Path(__file__).resolve().parents[1] / "tests" / "data"
 DEFAULT_OUT = Path("/tmp/agent-memory-clean.db")
@@ -50,9 +68,14 @@ def is_gold(topic: str, path: str | None) -> bool:
 
     Hot golds key on (path, heading); cold golds on a topic prefix. Both are checked
     because the copy now touches both tiers.
+
+    All three fixtures, including the collected drops -- they are hot golds in the same
+    shape, and leaving them out let a drop's answer be deleted and then silently skipped
+    at eval time as an unresolvable case.
     """
-    hot = json.loads((FIXTURES / "hot_queries.json").read_text())["cases"]
-    cold = json.loads((FIXTURES / "paraphrase_queries.json").read_text())["cases"]
+    collected = json.loads((FIXTURES / "collected_queries.json").read_text())["cases"]
+    hot = json.loads((FIXTURES / "hot_queries.json").read_text())["cases"] + collected
+    cold = json.loads((FIXTURES / "paraphrase_queries.json").read_text())["cases"] + collected
     if path is not None and any(
         str(Path(c["path"]).expanduser()) == path and c["heading"][:120] == topic
         for c in hot if "path" in c
