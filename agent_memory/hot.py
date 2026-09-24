@@ -131,7 +131,9 @@ def _section_id(path: Path, heading: str, body: str) -> str:
     return uuid.uuid5(_NAMESPACE, f"{path}|{heading}|{digest}").hex
 
 
-def _index_file(con, path: Path, project: str | None) -> tuple[int, int]:
+def _index_file(
+    con, path: Path, project: str | None, agent: str | None
+) -> tuple[int, int]:
     """Mirror one file, touching only the sections that actually changed.
 
     Returns (sections, kept). These files are edited every session, so re-inserting
@@ -163,10 +165,11 @@ def _index_file(con, path: Path, project: str | None) -> tuple[int, int]:
         if memory_id in existing:
             continue
         con.execute(
-            "INSERT INTO memories"
-            "(id, session, project, topic, content, created_at, source, tier, path) "
-            "VALUES (?, ?, ?, ?, ?, datetime(?, 'unixepoch'), 'hot', 'hot', ?)",
-            (memory_id, path.stem, project, heading[:120], body, mtime, str(path)),
+            "INSERT INTO memories (id, session, project, agent, topic, content, "
+            "created_at, source, tier, path) "
+            "VALUES (?, ?, ?, ?, ?, ?, datetime(?, 'unixepoch'), 'hot', 'hot', ?)",
+            (memory_id, path.stem, project, agent, heading[:120], body, mtime,
+             str(path)),
         )
         con.execute(
             "INSERT INTO memories_fts(topic, body, memory_id) VALUES (?, ?, ?)",
@@ -183,9 +186,9 @@ def _index_file(con, path: Path, project: str | None) -> tuple[int, int]:
         )
 
     con.execute(
-        "INSERT OR REPLACE INTO hot_files(path, mtime, size, hash, project) "
-        "VALUES (?, ?, ?, ?, ?)",
-        (str(path), mtime, size, digest, project),
+        "INSERT OR REPLACE INTO hot_files(path, mtime, size, hash, project, agent) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (str(path), mtime, size, digest, project, agent),
     )
     return len(wanted), len(existing & wanted.keys())
 
@@ -205,19 +208,23 @@ def sync(con, force: bool = False) -> dict:
         row["path"]: (row["mtime"], row["size"], row["hash"])
         for row in con.execute("SELECT path, mtime, size, hash FROM hot_files")
     }
-    # Which project a directory belongs to, as recorded by whoever indexed it first.
-    # Without this the project comes from the current working directory, which is
-    # wrong for any directory this process does not own -- measured: indexing another
-    # project's memory dir relabelled its sections as ours.
-    owner = {
-        row["path"].rsplit("/", 1)[0]: row["project"]
-        for row in con.execute(
-            "SELECT path, project FROM hot_files WHERE project IS NOT NULL"
-        )
-    }
+    # Which project and which agent a directory belongs to, as recorded by whoever
+    # indexed it first. Without this both come from the current process, which is wrong
+    # for any directory it does not own -- measured for `project`: indexing another
+    # project's memory dir relabelled its sections as ours. `agent` is the same fact
+    # about the same directory, so it is inherited the same way; a Codex recall that
+    # happens to mirror Claude's memory files must not claim them as Codex's.
+    # Accumulated per field rather than built as a comprehension: a directory holds many
+    # files and only some of their rows carry a name, so the last row read must not be
+    # allowed to overwrite a known owner with a NULL.
+    owner: dict[str, tuple[str | None, str | None]] = {}
+    for row in con.execute("SELECT path, project, agent FROM hot_files"):
+        directory = row["path"].rsplit("/", 1)[0]
+        known_project, known_agent = owner.get(directory, (None, None))
+        owner[directory] = (known_project or row["project"], known_agent or row["agent"])
     present = _files()
     directories = {str(d) for d in hot_dirs()}
-    project = None
+    project = agent = None
     stats = {"indexed": 0, "sections": 0, "kept": 0, "removed": 0, "unchanged": 0}
 
     for path in present:
@@ -231,12 +238,16 @@ def sync(con, force: bool = False) -> dict:
             stats["unchanged"] += 1
             continue
         if project is None:
-            from .store import detect_project
+            from .store import detect_agent, detect_project
 
             project = detect_project()
+            agent = detect_agent()
         if force:
             _drop(con, key)
-        sections, kept = _index_file(con, path, owner.get(str(path.parent)) or project)
+        known_project, known_agent = owner.get(str(path.parent), (None, None))
+        sections, kept = _index_file(
+            con, path, known_project or project, known_agent or agent
+        )
         stats["sections"] += sections
         stats["kept"] += kept
         stats["indexed"] += 1

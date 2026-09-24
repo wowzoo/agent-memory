@@ -116,6 +116,43 @@ cold 101건, 파일이 6배 많음):
 
 hot 계층은 이 도구에서 **읽기 전용**입니다. `mem_write`는 파일에 절대 쓰지 않습니다.
 
+## 누가 썼는지 — `agent`
+
+claude · codex · kiro 를 전역 등록하면 **한 DB 를 세 하네스가 같이 씁니다**. 결과에 `agent` 가
+붙습니다 — `'claude'` / `'codex'` / `'kiro'` — 그리고 `mem_recall(agent=...)` 로 한쪽만 볼 수
+있습니다. `source` 를 겸용하지 않은 이유는 그게 이미 **유입 경로**(`write` / `hot` /
+`marm:*`)를 뜻하기 때문입니다. 작성자는 별개의 사실입니다.
+
+이름은 두 곳에서 옵니다. 순서가 있습니다.
+
+1. `AGENT_MEMORY_AGENT` — 각 하네스가 자기 MCP 등록의 env 블록에 적습니다. 운영자가 통제하는
+   유일한 값이라 **이쪽이 이깁니다**.
+2. MCP `initialize` 의 `clientInfo.name` — 설정이 없어도 뭔가 찍힙니다. 다만 스펙상 optional
+   이고(2026-07-28), 두 하네스가 같은 문자열을 보내도 막을 방법이 없습니다.
+
+둘 다 없으면 `agent: null` 입니다. 추측하지 않고, `mem_write` 응답에 그대로 보여 줍니다 —
+env 가 안 꽂혔다는 사실 자체가 봐야 하는 정보입니다. 표기는 정규화합니다(`Claude Code` →
+`claude-code`), 그래야 필터 키가 한 개로 고정됩니다.
+
+**순위에는 넣지 않습니다.** `tier` 와 `superseded_by` 가 그런 것과 같습니다. 이 코퍼스에서
+관련도 아닌 출처로 순서를 바꾸려 한 시도가 셋 있었고(hot 일괄 가점 · hot 문맥 접두 ·
+확신 가중 β), 셋 다 산 것보다 판 게 많았습니다. `agent` 는 표시와 필터입니다.
+
+⚠️ **hot 행의 `agent` 는 미러링한 프로세스가 아니라 디렉터리 주인입니다.** `hot_files.agent`
+에 처음 색인한 쪽이 적고 이후는 물려받습니다 — `project` 가 schema v6 에서 당한 것과 같은
+함정이고(남의 memory 디렉터리를 가리키면 그쪽 섹션이 이쪽 이름으로 다시 라벨됐습니다),
+Codex 의 recall 이 Claude 의 memory 파일을 미러링한다고 그게 Codex 것이 되지는 않습니다.
+
+⚠️ **활성 세션도 agent 별로 갈랐습니다.** `meta.active_session` 한 행을 세 하네스가 공유하면
+Codex 가 세션을 지정한 순간 Claude 의 다음 무명 write 가 그 버킷으로 들어갑니다. 이제 키가
+`active_session:<agent>` 이고, 옛 전역 키는 **폴백으로만** 읽습니다 — 이관 전 스토어가 각
+agent 의 첫 write 까지 세션을 유지합니다.
+
+`agent` 가 없던 시절의 cold 기억은 `null` 입니다. 세 하네스가 이미 같이 쓰고 있었으니 사후
+귀속이 불가능하고, 지어내는 대신 비워 뒀습니다(실측: cold 343건). hot 은 다릅니다 — 옛 hot
+디렉터리는 전부 `~/.claude/projects/` 아래였으므로(300/300 확인) 마이그레이션이 `'claude'` 로
+채웁니다. 그래서 `agent=` 필터는 hot 전체를 첫 recall 부터 덮습니다.
+
 ## 지금 성능
 
 🔴 **현 기준선은 2026-09-13 입니다** (cold 439 · hot 1,620 · `limit=5` · 기본 경로):
@@ -307,11 +344,13 @@ python scripts/annotate.py batch.json
 
 - **`mem_write(content, session=, topic=, project=, entities=, relations=)`** — 기억 저장.
   결정·근거·결과를 남기고 지나가는 잡담은 남기지 않습니다.
-- **`mem_recall(query, limit=, session=, project=, detail=, mode=, tier=, rerank=)`** —
+- **`mem_recall(query, limit=, session=, project=, detail=, mode=, tier=, rerank=, agent=)`** —
   렉시컬(Kiwi+BM25) · 시맨틱(청크 임베딩) · 개념 그래프 co-citation(hybrid 에서만, 절반 가중)
   세 레인을 RRF로 융합. hot/cold를 함께 검색해 구분 반환합니다. `rerank=True`는 상위 10건을
-  한국어 크로스인코더로 다시 매깁니다 — R@1 72%→92%, 대가는 3초입니다.
-- **`mem_sessions(session=)`** — 세션 목록 또는 한 세션의 항목 목록.
+  한국어 크로스인코더로 다시 매깁니다 — R@1 72%→92%, 대가는 3초입니다. `agent=`는 한 하네스가
+  기록한 것만 봅니다.
+- **`mem_sessions(session=)`** — 세션 목록 또는 한 세션의 항목 목록. `active_session` 은
+  호출한 agent 자신의 것입니다.
 - **`mem_annotate(memory_id, entities=, relations=)`** — 기존 기억에 개념 그래프 부착.
 - **`mem_graph(entity=, hops=, predicate=)`** — 그래프 순회 또는 전체 형태 조회.
 
@@ -340,6 +379,7 @@ python scripts/annotate.py batch.json
 | `AGENT_MEMORY_HOT` | `1` (`0`이면 hot 미러링 끔) |
 | `AGENT_MEMORY_MIN_TIER_SLOTS` | `1` (`0`이면 순수 관련도 정렬. 리랭크를 끄고 쓰면 `2` 가 맞다 — cold R@5 +2.8%p) |
 | `AGENT_MEMORY_HALF_LIFE_DAYS` | `0` (최신성 가중 끔) |
+| `AGENT_MEMORY_AGENT` | — (없으면 MCP `clientInfo.name`, 그것도 없으면 `null`. ⇒ `## 누가 썼는지`) |
 | `AGENT_MEMORY_EXTRA_STOPWORDS` | — |
 
 임베딩 모델명·차원은 DB `meta` 테이블에 기록됩니다. 모델을 바꾸면 `mem_recall`이 낡은 벡터로

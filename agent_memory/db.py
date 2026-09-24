@@ -1,10 +1,11 @@
 """SQLite schema and connection handling."""
 
 import sqlite3
+from pathlib import Path
 
 from . import config
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS memories (
@@ -19,6 +20,20 @@ CREATE TABLE IF NOT EXISTS memories (
     -- memory file, which is the source of truth. See hot.py.
     tier        TEXT NOT NULL DEFAULT 'cold',
     path        TEXT,
+    -- Which agent this came from: 'claude', 'codex', 'kiro'. One store is shared by
+    -- every harness registered against it, and `source` cannot answer this -- it
+    -- already names the ingestion route ('write', 'hot', 'marm:*'), not the writer.
+    --
+    -- For a cold row this is who called mem_write, resolved by store.detect_agent().
+    -- For a hot row it is who *owns the directory*, inherited from hot_files rather
+    -- than taken from the mirroring process, for the same reason `project` is (see
+    -- below). NULL means unattributable: written before this column existed.
+    --
+    -- Ranking ignores it, like `tier` and `superseded_by`. Three separate attempts to
+    -- reorder on provenance rather than relevance were measured on this corpus and all
+    -- three cost more than they bought (see `docs/measurements.md`, its hot-boost,
+    -- breadcrumb and conviction-weighting sections). This is for display and filtering.
+    agent       TEXT,
     -- What replaced this memory, when it has been corrected by a later one. A
     -- reference, not a foreign key: a hot section's id is a hash of its body and dies
     -- on the next edit of that file, so `path#heading` has to be expressible too. See
@@ -44,12 +59,17 @@ CREATE INDEX IF NOT EXISTS idx_memories_tier ON memories(tier);
 -- to allow. Measured: pointing it at another project's memory dir relabelled that
 -- project's section as this one's, which silently breaks `project=` filtering. The
 -- directory's first indexer records the name here and later ones inherit it.
+--
+-- `agent` is here for exactly the same reason and is inherited the same way: whose
+-- memory files these are is a fact about the directory, not about whichever harness
+-- happened to run the recall that mirrored it.
 CREATE TABLE IF NOT EXISTS hot_files (
     path    TEXT PRIMARY KEY,
     mtime   REAL NOT NULL,
     size    INTEGER NOT NULL,
     hash    TEXT NOT NULL,
-    project TEXT
+    project TEXT,
+    agent   TEXT
 );
 
 -- Standalone (not external-content) because the indexed text is derived by
@@ -140,9 +160,9 @@ def _migrate(con: sqlite3.Connection) -> None:
     CREATE TABLE IF NOT EXISTS does nothing to a table that already exists, so a
     column added to the DDL above never appears in a store created before it.
     """
-    columns = {row[1] for row in con.execute("PRAGMA table_info(memories)")}
+    memory_columns = {row[1] for row in con.execute("PRAGMA table_info(memories)")}
     for column in ("superseded_by", "superseded_at"):
-        if column not in columns:
+        if column not in memory_columns:
             con.execute(f"ALTER TABLE memories ADD COLUMN {column} TEXT")
 
     columns = {row[1] for row in con.execute("PRAGMA table_info(hot_files)")}
@@ -154,6 +174,28 @@ def _migrate(con: sqlite3.Connection) -> None:
             "UPDATE hot_files SET project = ("
             "  SELECT m.project FROM memories m"
             "  WHERE m.path = hot_files.path AND m.project IS NOT NULL LIMIT 1)"
+        )
+    if "agent" not in columns:
+        con.execute("ALTER TABLE hot_files ADD COLUMN agent TEXT")
+        # Every hot directory in a pre-v8 store is Claude Code's: `hot.default_hot_dir`
+        # only ever looked under ~/.claude/projects/<slug>/memory, and pointing
+        # AGENT_MEMORY_HOT_PATHS anywhere else was a Claude Code process doing it.
+        # Verified on the live store: 300 of 300 hot_files rows sit under that root.
+        con.execute(
+            "UPDATE hot_files SET agent = 'claude' WHERE path LIKE ?",
+            (f"{Path.home() / '.claude' / 'projects'}/%",),
+        )
+
+    if "agent" not in memory_columns:
+        con.execute("ALTER TABLE memories ADD COLUMN agent TEXT")
+        # Hot rows take their directory's owner, so the backfill above reaches them and
+        # `agent=` filtering covers the whole hot tier from the first recall. Cold rows
+        # written before this column cannot be attributed at all -- three harnesses were
+        # already sharing this store -- and stay NULL rather than being guessed at.
+        con.execute(
+            "UPDATE memories SET agent = ("
+            "  SELECT h.agent FROM hot_files h WHERE h.path = memories.path)"
+            " WHERE tier = 'hot'"
         )
 
 

@@ -28,8 +28,58 @@ def detect_project() -> str | None:
     return os.path.basename(cwd) or None
 
 
-def active_session(con: sqlite3.Connection) -> str:
-    return db.get_meta(con, "active_session") or "default"
+# ------------------------------------------------------------------------ identity
+
+# The MCP client this process is serving, from the `initialize` handshake. Process
+# state rather than request state on purpose: one stdio server serves one client, and
+# holding it here is what lets `hot.sync()` know who is mirroring a directory without
+# threading an identity argument through `recall`.
+_client: str | None = None
+
+
+def set_client(name: str | None) -> None:
+    """Record the MCP client's own name. Called by the server on each tool call."""
+    global _client
+    if name:
+        _client = name
+
+
+def normalize_agent(name: str | None) -> str | None:
+    """A writer name reduced to a stable filter key: 'Claude Code' -> 'claude-code'."""
+    cleaned = re.sub(r"\s+", "-", (name or "").strip().lower())
+    return cleaned or None
+
+
+def detect_agent() -> str | None:
+    """Which agent is writing: the env override, else the MCP client's own name.
+
+    Two sources because neither alone is enough. `clientInfo` needs no configuration
+    and identifies a harness nobody has set up yet, but it is optional per spec (so it
+    can be absent) and nothing stops two harnesses sending the same string.
+    AGENT_MEMORY_AGENT in a harness's own MCP registration is the one thing the
+    operator controls, so it wins.
+    """
+    explicit = os.environ.get("AGENT_MEMORY_AGENT", "").strip()
+    return normalize_agent(explicit) if explicit else normalize_agent(_client)
+
+
+def _session_key(agent: str | None) -> str:
+    return f"active_session:{agent}" if agent else "active_session"
+
+
+def active_session(con: sqlite3.Connection, agent: str | None = None) -> str:
+    """Where a write lands when the caller names no session.
+
+    Keyed per agent because one store is shared by every harness registered against
+    it: on a single global key, Codex naming a session decided where Claude's next
+    unnamed write went. The unkeyed key is read as a fallback so a store written before
+    this change keeps its session until each agent next names one of its own.
+    """
+    return (
+        db.get_meta(con, _session_key(agent))
+        or db.get_meta(con, "active_session")
+        or "default"
+    )
 
 
 # --------------------------------------------------------------------------- write
@@ -77,18 +127,20 @@ def write(
     if not content:
         return {"status": "error", "message": "content is empty"}
 
+    agent = detect_agent()
     if session:
-        db.set_meta(con, "active_session", session)
+        db.set_meta(con, _session_key(agent), session)
     else:
-        session = active_session(con)
+        session = active_session(con, agent)
     topic = (topic or content.splitlines()[0])[:120].strip()
     project = project if project is not None else detect_project()
 
     memory_id = uuid.uuid4().hex
     con.execute(
-        "INSERT INTO memories(id, session, project, topic, content, created_at, source) "
-        "VALUES (?, ?, ?, ?, ?, ?, 'write')",
-        (memory_id, session, project, topic, content, _now()),
+        "INSERT INTO memories"
+        "(id, session, project, topic, content, created_at, source, agent) "
+        "VALUES (?, ?, ?, ?, ?, ?, 'write', ?)",
+        (memory_id, session, project, topic, content, _now(), agent),
     )
     con.execute(
         "INSERT INTO memories_fts(topic, body, memory_id) VALUES (?, ?, ?)",
@@ -111,6 +163,9 @@ def write(
         "session": session,
         "topic": topic,
         "project": project,
+        # Reported even when null, which is the case worth seeing: it means neither
+        # AGENT_MEMORY_AGENT nor the client's own clientInfo reached this process.
+        "agent": agent,
         "chunks": len(chunks),
     }
     if entities or relations:
@@ -240,7 +295,11 @@ def _supersession(con: sqlite3.Connection, row: sqlite3.Row) -> dict | None:
 
 
 def _filters(
-    session: str | None, project: str | None, tier: str | None
+    session: str | None,
+    project: str | None,
+    tier: str | None,
+    # Defaulted for the experiment scripts, which pass the first three positionally.
+    agent: str | None = None,
 ) -> tuple[str, list]:
     clauses, params = [], []
     if session:
@@ -252,6 +311,9 @@ def _filters(
     if tier:
         clauses.append("m.tier = ?")
         params.append(tier)
+    if agent:
+        clauses.append("m.agent = ?")
+        params.append(normalize_agent(agent))
     return (" AND ".join(clauses), params)
 
 
@@ -524,6 +586,7 @@ def recall(
     mode: str = "hybrid",
     tier: str | None = None,
     rerank: bool | None = None,
+    agent: str | None = None,
 ) -> dict:
     query = query.strip()
     if not query:
@@ -537,7 +600,7 @@ def recall(
     if config.HOT_ENABLED and tier != "cold":
         hot.sync(con)
 
-    where, params = _filters(session, project, tier)
+    where, params = _filters(session, project, tier, agent)
     pool = config.CANDIDATE_POOL
     lanes: dict[str, list[str]] = {}
     if mode in ("hybrid", "lexical"):
@@ -568,8 +631,8 @@ def recall(
     rows = {
         r["id"]: r
         for r in con.execute(
-            "SELECT id, session, project, topic, content, created_at, tier, path, "
-            "superseded_by, superseded_at "
+            "SELECT id, session, project, agent, topic, content, created_at, tier, "
+            "path, superseded_by, superseded_at "
             f"FROM memories WHERE id IN ({','.join('?' * len(scores))})",
             list(scores),
         )
@@ -628,6 +691,7 @@ def recall(
             "tier": row["tier"],
             "session": row["session"],
             "project": row["project"],
+            "agent": row["agent"],
             "topic": row["topic"],
             "created_at": row["created_at"],
             "score": round(score, 5),
@@ -673,6 +737,7 @@ def sessions_tier_counts(con: sqlite3.Connection) -> dict:
 
 def sessions(con: sqlite3.Connection, session: str | None = None) -> dict:
     if session is None:
+        agent = detect_agent()
         # Cold only: hot rows are sections of files, so listing them as sessions
         # would bury the archive's sessions under one entry per markdown heading.
         rows = con.execute(
@@ -685,7 +750,10 @@ def sessions(con: sqlite3.Connection, session: str | None = None) -> dict:
         ).fetchall()
         return {
             "status": "ok",
-            "active_session": active_session(con),
+            # This caller's own active session, not a store-wide one — see
+            # `active_session`. `agent` says whose it is.
+            "active_session": active_session(con, agent),
+            "agent": agent,
             "sessions": [
                 {"session": r["session"], "count": r["n"], "last_write": r["last"]}
                 for r in rows
@@ -696,7 +764,7 @@ def sessions(con: sqlite3.Connection, session: str | None = None) -> dict:
         }
 
     rows = con.execute(
-        "SELECT id, topic, created_at, project, tier FROM memories "
+        "SELECT id, topic, created_at, project, agent, tier FROM memories "
         "WHERE session = ? ORDER BY created_at DESC",
         (session,),
     ).fetchall()

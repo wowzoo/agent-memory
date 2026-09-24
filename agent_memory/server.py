@@ -11,11 +11,30 @@ graph_index); what was dropped is the 19 tools nobody called.
 from typing import Annotated, Any, Literal, NotRequired, Optional, TypedDict
 
 from mcp.server import MCPServer
+from mcp.server.mcpserver import Context
 from pydantic import Field
 
 from . import db, graph, store
 
 mcp = MCPServer("agent-memory")
+
+
+def _learn_client(ctx: Context | None) -> None:
+    """Hand the MCP client's own name to the store, so writes can be attributed.
+
+    Optional in both directions: `clientInfo` is optional per spec (2026-07-28 made it
+    so), and `AGENT_MEMORY_AGENT` overrides it anyway. A harness that sends nothing and
+    sets nothing writes memories with `agent: null`, which is visible in the mem_write
+    response rather than silently guessed at.
+    """
+    # `ctx.session` raises outside a request, and `MCPServer.call_tool` builds a Context
+    # with no request context for in-process calls -- which made mem_write fail outright.
+    # `protocol_version` is the None-safe probe for that: knowing who is writing must
+    # never be the reason a write does not happen.
+    if ctx is None or ctx.protocol_version is None:
+        return
+    params = ctx.session.client_params
+    store.set_client(params.client_info.name if params else None)
 
 
 # Declared as TypedDicts rather than BaseModels on purpose: pydantic validates them
@@ -41,6 +60,7 @@ def mem_write(
     entities: Optional[list[Entity | str]] = None,
     relations: Optional[list[Relation]] = None,
     supersedes: Optional[str] = None,
+    ctx: Context | None = None,
 ) -> dict[str, Any]:
     """Store a durable memory. Korean text is fully supported.
 
@@ -50,7 +70,9 @@ def mem_write(
     Parameters:
     - content: the memory text (Korean, English or mixed)
     - session: session/topic bucket to file this under. Passing it also makes it
-      the active session for later writes. Omit to use the active session.
+      the active session for *this agent's* later writes — the store is shared by
+      every harness registered against it, so the active session is per agent.
+      Omit to use the active session.
     - topic: short label; defaults to the first line of `content`
     - project: defaults to $AGENT_MEMORY_PROJECT, else the current directory name
     - entities: optional concept-graph nodes, e.g.
@@ -71,13 +93,17 @@ def mem_write(
       infer which is current. Ranking is untouched — nothing is hidden or demoted.
       A hot section cannot be superseded; edit the file.
 
-    Returns: status, memory_id, session, topic, project, chunks, and `graph` when
-    entities or relations were supplied. `graph` also carries `entities_given` /
+    Returns: status, memory_id, session, topic, project, agent, chunks, and `graph`
+    when entities or relations were supplied. `agent` is which harness this was
+    recorded under — `$AGENT_MEMORY_AGENT`, else this client's own MCP name, else
+    null. It is not a parameter: nobody gets to declare themselves someone else.
+    `graph` also carries `entities_given` /
     `relations_given` **when they differ from what landed** — names are matched on
     case and spacing alone, so two spellings of one name merge into a single entity
     and a blank name is skipped. Seeing the extra key means some input did not land
     one-for-one; its absence means everything did.
     """
+    _learn_client(ctx)
     with db.connect() as con:
         return store.write(
             con, content, session=session, topic=topic, project=project,
@@ -151,6 +177,8 @@ def mem_recall(
     mode: Literal["hybrid", "lexical", "semantic"] = "hybrid",
     tier: Optional[Literal["hot", "cold"]] = None,
     rerank: Optional[bool] = None,
+    agent: Optional[str] = None,
+    ctx: Context | None = None,
 ) -> dict[str, Any]:
     """Search memories by meaning and keyword. Korean queries work as well as English.
 
@@ -192,32 +220,47 @@ def mem_recall(
       deep inside a long memory: each candidate is judged on its first ~512
       tokens, so evidence past that is invisible — on verbatim mid-document
       queries reranking takes R@1 from 82% to 33%.
+    - agent: restrict to memories recorded by one harness ('claude', 'codex',
+      'kiro'); omit to search every agent's. For a hot result this is whose memory
+      directory the file lives in, not whoever last mirrored it. Note that memories
+      written before this store recorded writers have `agent: null` and so are
+      excluded by any value — use it to answer "what did Codex log", not to survey.
 
-    Returns: status, mode, ranked results (each with tier, score, the lanes that
-    found it, and `path` for hot results), results_count. A `warning` field appears
+    Returns: status, mode, ranked results (each with tier, agent, score, the lanes
+    that found it, and `path` for hot results), results_count. A `warning` field appears
     if the stored vectors were built by a different embedding model, in which case
     only the lexical lane runs. With reranking, `reranked` gives the depth rescored —
     read it as "the top N are ordered by the cross-encoder, not by `score`", since
     every row keeps its fusion score.
     """
+    # Before the recall, not just before a write: recall triggers `hot.sync`, and which
+    # agent owns a newly seen hot directory is recorded there.
+    _learn_client(ctx)
     with db.connect() as con:
         return store.recall(
             con, query, limit=limit, session=session, project=project,
-            detail=detail, mode=mode, tier=tier, rerank=rerank,
+            detail=detail, mode=mode, tier=tier, rerank=rerank, agent=agent,
         )
 
 
 @mcp.tool()
-def mem_sessions(session: Optional[str] = None) -> dict[str, Any]:
+def mem_sessions(
+    session: Optional[str] = None, ctx: Context | None = None
+) -> dict[str, Any]:
     """List sessions, or list the entries inside one session.
+
+    Sessions themselves are shared — every harness's writes are listed — but
+    `active_session` is this agent's own, since that is what decides where *your*
+    next unnamed write lands.
 
     Parameters:
     - session: omit to get every session with its entry count and last write time;
       pass a name to list that session's entries, newest first
 
-    Returns (omitted): status, active_session, sessions, total_sessions
-    Returns (given):   status, session, entries, total_entries
+    Returns (omitted): status, active_session, agent, sessions, total_sessions
+    Returns (given):   status, session, entries (each with `agent`), total_entries
     """
+    _learn_client(ctx)
     with db.connect() as con:
         return store.sessions(con, session)
 
