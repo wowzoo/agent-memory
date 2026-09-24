@@ -126,6 +126,14 @@ def write(
     content = content.strip()
     if not content:
         return {"status": "error", "message": "content is empty"}
+    if len(content) > config.MAX_CONTENT_CHARS:
+        return {
+            "status": "error",
+            "message": (
+                f"content is {len(content):,} chars; the limit is "
+                f"{config.MAX_CONTENT_CHARS:,}. Split it into several memories."
+            ),
+        }
 
     agent = detect_agent()
     if session:

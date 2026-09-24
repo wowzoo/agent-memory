@@ -68,7 +68,8 @@ def mem_write(
     recovering weeks later. Skip transient chatter.
 
     Parameters:
-    - content: the memory text (Korean, English or mixed)
+    - content: the memory text (Korean, English or mixed), at most 50,000 chars
+      ($AGENT_MEMORY_MAX_CONTENT_CHARS) — split anything longer
     - session: session/topic bucket to file this under. Passing it also makes it
       the active session for *this agent's* later writes — the store is shared by
       every harness registered against it, so the active session is per agent.
@@ -170,7 +171,9 @@ def mem_graph(
 @mcp.tool()
 def mem_recall(
     query: str,
-    limit: int = 5,
+    # 50 is the lane pool (CANDIDATE_POOL): past it there is no ranking left to read,
+    # only more full texts in one tool result.
+    limit: Annotated[int, Field(ge=1, le=50)] = 5,
     session: Optional[str] = None,
     project: Optional[str] = None,
     detail: Literal[1, 2, 3] = 1,
@@ -201,7 +204,7 @@ def mem_recall(
 
     Parameters:
     - query: natural-language question or keywords, e.g. "한국어 검색이 왜 안 됐지"
-    - limit: max results (default 5)
+    - limit: max results (default 5, at most 50)
     - session: restrict to one session; omit to search all
     - project: restrict to one project; omit to search all
     - detail: 1 = ~200 chars, 2 = ~500 chars, 3 = full content

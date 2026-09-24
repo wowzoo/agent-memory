@@ -367,6 +367,7 @@ python scripts/annotate.py batch.json
 | `AGENT_MEMORY_MODEL_NAME` / `_EMBED_DIM` | `multilingual-e5-small-ko` / `384` |
 | `AGENT_MEMORY_QUERY_PREFIX` / `_PASSAGE_PREFIX` | `query: ` / `passage: ` (e5 계열 필수) |
 | `AGENT_MEMORY_CHUNK_TOKENS` / `_CHUNK_OVERLAP` | `400` / `80` |
+| `AGENT_MEMORY_MAX_CONTENT_CHARS` | `50000` (`mem_write` 본문 상한. 지금까지 가장 긴 기억은 8,838자) |
 | `AGENT_MEMORY_TOPIC_WEIGHT` / `_BODY_WEIGHT` | `3.0` / `1.0` (bm25 컬럼 가중) |
 | `AGENT_MEMORY_RRF_K` / `_CANDIDATE_POOL` | `10` / `50` (k 는 이 코퍼스 크기에 맞춰 60에서 내림) |
 | `AGENT_MEMORY_GRAPH_LANE_WEIGHT` / `_GRAPH_LANE_SEEDS` | `0.75` / `3` (`0`이면 그래프 레인 끔) |

@@ -49,6 +49,12 @@ MAX_TOKENS = _int("AGENT_MEMORY_MAX_TOKENS", 512)
 CHUNK_TOKENS = _int("AGENT_MEMORY_CHUNK_TOKENS", 400)
 CHUNK_OVERLAP = _int("AGENT_MEMORY_CHUNK_OVERLAP", 80)
 
+# Largest memory mem_write accepts, in characters. Every character is tokenized and
+# embedded chunk by chunk inside the write call, so nothing bounded that work before.
+# Sized from the store (2026-09-24): the longest mem_write so far is 8,838 chars and the
+# longest hot section 21,307, so 50,000 turns away nothing that has ever been written.
+MAX_CONTENT_CHARS = _int("AGENT_MEMORY_MAX_CONTENT_CHARS", 50_000)
+
 # --- Retrieval -------------------------------------------------------------
 RECALL_LIMIT = _int("AGENT_MEMORY_RECALL_LIMIT", 5)
 CANDIDATE_POOL = _int("AGENT_MEMORY_CANDIDATE_POOL", 50)
