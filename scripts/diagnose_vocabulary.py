@@ -8,9 +8,9 @@ such cases and stopped, which is too small a sample to design against. This coun
 
 Deliberately no lanes and no ranking: it compares the query's tokens against the *gold's
 own* text, so the number does not move when this repository records its own evaluations
-into the hot tier (see the measurement-hygiene section of the README). That is the whole
-reason this is a separate script -- it is the one question about retrieval that can be
-asked on the live store.
+into the hot tier (see the measurement-hygiene sections of `docs/measurements.md`). That is
+the whole reason this is a separate script -- it is the one question about retrieval that
+can be asked on the live store.
 
 `df` is what decides reachability, not the raw count of shared words. BM25 matches on OR,
 so a gold that shares zero query terms is not in the match set at all; one that shares

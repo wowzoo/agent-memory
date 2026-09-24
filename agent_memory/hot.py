@@ -14,7 +14,8 @@ The tier is provenance, not a score: nothing here ranks a hot row above a cold o
 A flat boost for hot was tried and measured on this corpus and it was worse -- it
 promoted files even for questions the files do not answer, taking the fixture's cold
 targets to R@1 0% / R@5 40%. Ranking is relevance alone, and `MIN_TIER_SLOTS` only
-guarantees that neither tier disappears from the response. See the README table.
+guarantees that neither tier disappears from the response. See the table in
+`docs/measurements.md`.
 
 This tier is read-only here: `mem_write` never writes into the files. They are
 maintained by the agent's own memory tooling; we mirror them for retrieval.

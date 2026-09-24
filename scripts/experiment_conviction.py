@@ -13,8 +13,9 @@ untouched, `store.recall(limit=5, rerank=None)` so the gate, the reranker, the r
 shipped baseline and its agreement with the recorded numbers is the equivalence check.
 
 The question is narrow and worth asking: β rewards one lane being sure, and so does the
-gated reranker (it fires precisely when the lanes disagree about first place, ⇒ README
-`### 리랭커를 켤지는 베이스 순위가 먼저 압니다`), and so does the lane rescue. Three devices
+gated reranker (it fires precisely when the lanes disagree about first place, ⇒
+`docs/measurements.md` `### 리랭커를 켤지는 베이스 순위가 먼저 압니다`), and so does the lane
+rescue. Three devices
 aimed at one pathology. If β still pays after the other two, it is buying something they
 do not; if it does not, that is the fourth time a broad device handed its job to a narrow
 one and the axis closes.
