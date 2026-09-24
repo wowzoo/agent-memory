@@ -30,6 +30,12 @@ dependencies = [
 export = ["torch>=2.4", "transformers>=4.44", "optimum>=2.1", "optimum-onnx>=0.1",
           "onnx>=1.16"]
 
+[dependency-groups]
+# Declared 2026-09-13. It was not here before -- the tests were run from a venv that
+# happened to have pytest installed, so `uv sync` on a new machine produced an
+# environment that could not run them and the reason looked like `--no-dev`.
+dev = ["pytest>=8.0"]
+
 [project.scripts]
 agent-memory = "agent_memory.server:main"
 agent-memory-migrate = "agent_memory.migrate:main"
