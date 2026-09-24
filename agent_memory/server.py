@@ -140,6 +140,33 @@ def mem_annotate(
 
 
 @mcp.tool()
+def mem_forget(memory_id: str) -> dict[str, Any]:
+    """Permanently delete one archived (cold) memory and scrub its text from disk.
+
+    For a memory that should not exist at all — a secret, personal data, something
+    written by mistake. A memory that is merely out of date should stay and be
+    corrected instead: write the correction with `mem_write(supersedes=...)`, which
+    keeps the history and tells readers which one is current. This cannot be undone.
+
+    Parameters:
+    - memory_id: the id from mem_write or mem_recall, or a prefix of at least 8
+      characters that matches exactly one memory
+
+    Hot sections are refused: they are mirrored from memory files and come back on
+    the next recall, so the fix is to edit the file (the error names it).
+
+    Returns: status, memory_id, topic, session, agent, created_at (what was deleted),
+    removed (chunks / entities / relations counts), scrubbed, superseded_refs.
+    `scrubbed: false` comes with a `warning` — the memory is gone, but its bytes may
+    remain in the WAL until the next checkpoint (another process was reading).
+    `superseded_refs` lists memories this one had corrected; they keep their mark,
+    which recall now shows as unresolved. Backups taken earlier are not touched.
+    """
+    with db.connect() as con:
+        return store.forget(con, memory_id)
+
+
+@mcp.tool()
 def mem_graph(
     entity: Optional[str] = None,
     hops: Annotated[int, Field(ge=1, le=graph.MAX_HOPS)] = 1,

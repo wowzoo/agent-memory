@@ -299,6 +299,104 @@ def _supersession(con: sqlite3.Connection, row: sqlite3.Row) -> dict | None:
     return block
 
 
+# -------------------------------------------------------------------------- forget
+
+# Shortest id prefix `forget` accepts. `resolve_ref` takes any unique prefix, which is
+# right for a mark that can be undone and wrong for a delete: on a small store one or
+# two characters can be unique, and a typo would then delete whatever happens to match.
+FORGET_MIN_PREFIX = 8
+
+
+def forget(con: sqlite3.Connection, memory_id: str) -> dict:
+    """Delete one cold memory, and scrub its text out of the database file.
+
+    Scrubbing is the point, not a nicety. The usual reason to delete a memory is that it
+    should never have been written -- a key, a password, someone's details -- and a
+    plain DELETE leaves those bytes on disk. Measured 2026-09-24 with a planted secret:
+    DELETE + checkpoint left it in the file 3 times; `secure_delete` alone, 3 (FTS5
+    keeps a deleted row's terms in its index segments until they are merged); adding an
+    FTS `optimize` reached 0 on one store and 1 on another, the survivor sitting on a
+    freed page that `secure_delete` had not zeroed. Merging the index and then VACUUM
+    leaves no copy, because VACUUM rebuilds the file from live rows only. On a copy of
+    the live store (59 MB) the optimize took 0.07 s and the VACUUM 0.3 s, and VACUUM
+    ran with another connection holding a read open.
+
+    What this cannot reach, and says so: a checkpoint another process's open read blocks
+    (the old pages stay in the WAL until the next one), and any backup already taken.
+    """
+    ref = (memory_id or "").strip()
+    if len(ref) < FORGET_MIN_PREFIX:
+        return {"status": "error",
+                "message": f"give at least {FORGET_MIN_PREFIX} characters of the id"}
+    row = resolve_ref(con, ref)
+    if row is None or "#" in ref:
+        return {"status": "error", "message": f"no single memory matches {ref!r}"}
+    if row["tier"] == "hot":
+        return {
+            "status": "error",
+            "message": "a hot section is mirrored from a file and would come back on the "
+                       f"next recall — edit the file instead: {row['path']}",
+        }
+    mid = row["id"]
+
+    removed = {
+        table: con.execute(
+            f"SELECT COUNT(*) FROM {table} WHERE memory_id = ?", (mid,)
+        ).fetchone()[0]
+        for table in ("memory_chunks", "memory_entities", "relations")
+    }
+    # The FTS row by hand: memories_fts is standalone, so no CASCADE reaches it (same as
+    # hot._drop). Chunks, entity links and relations go by CASCADE.
+    con.execute("DELETE FROM memories_fts WHERE memory_id = ?", (mid,))
+    con.execute("DELETE FROM memories WHERE id = ?", (mid,))
+    graph._prune_unused_entities(con)
+    con.commit()
+
+    # The delete is done and committed; everything below only removes leftover bytes,
+    # so a failure here is reported rather than raised.
+    warning = None
+    try:
+        con.execute("INSERT INTO memories_fts(memories_fts) VALUES ('optimize')")
+        con.commit()
+        con.execute("VACUUM")
+        busy = con.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()[0]
+        if busy:
+            warning = ("another process is reading the store, so the WAL could not be "
+                       "truncated; the deleted text stays in it until the next checkpoint")
+    except sqlite3.OperationalError as exc:
+        warning = f"deleted, but the file could not be rewritten ({exc}); run forget again"
+
+    # Memories this one had corrected. Their mark is left as it is: the older memory is
+    # still out of date, and the correction is often forgotten precisely because it
+    # leaked something. Recall shows the mark as unresolved; the caller is told here.
+    superseded_refs = [
+        r["id"]
+        for r in con.execute(
+            "SELECT id FROM memories WHERE superseded_by IS NOT NULL "
+            "AND superseded_by NOT LIKE '%#%' "
+            "AND substr(?, 1, length(superseded_by)) = superseded_by",
+            (mid,),
+        )
+    ]
+
+    result = {
+        "status": "ok",
+        "memory_id": mid,
+        "topic": row["topic"],
+        "session": row["session"],
+        "agent": row["agent"],
+        "created_at": row["created_at"],
+        "removed": {"chunks": removed["memory_chunks"],
+                    "entities": removed["memory_entities"],
+                    "relations": removed["relations"]},
+        "scrubbed": warning is None,
+        "superseded_refs": superseded_refs,
+    }
+    if warning:
+        result["warning"] = warning
+    return result
+
+
 # -------------------------------------------------------------------------- recall
 
 

@@ -352,6 +352,12 @@ python scripts/annotate.py batch.json
 - **`mem_sessions(session=)`** — 세션 목록 또는 한 세션의 항목 목록. `active_session` 은
   호출한 agent 자신의 것입니다.
 - **`mem_annotate(memory_id, entities=, relations=)`** — 기존 기억에 개념 그래프 부착.
+- **`mem_forget(memory_id)`** — cold 기억 하나를 영구 삭제하고 DB 파일에서 본문을 지웁니다.
+  잘못 저장한 비밀·개인정보용입니다. 낡았을 뿐인 기억은 지우지 말고 `mem_write(supersedes=)` 로
+  정정하십시오. hot 섹션은 거부합니다 — 파일을 고치십시오. 평범한 `DELETE` 로는 부족합니다:
+  심어 둔 비밀이 FTS 인덱스 세그먼트와 해제된 페이지에 남았고, FTS `optimize` 뒤 `VACUUM` 을
+  해야 0 이 됩니다(실측 2026-09-24, 라이브 스토어 사본에서 0.3초). 이미 뜬 백업과, 다른
+  프로세스가 읽는 중이라 체크포인트가 막힌 WAL 은 닿지 않으며 응답이 그렇다고 말합니다.
 - **`mem_graph(entity=, hops=, predicate=)`** — 그래프 순회 또는 전체 형태 조회.
 
 ## 설정
