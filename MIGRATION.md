@@ -4,7 +4,7 @@
 
 ## Locations
 
-- 원본 소스: `/Users/wowzoo/Development/agent-memory`
+- 원본 소스: `/Users/wowzoo/Development/agent-memory` — ⚠️ 2026-09-13 확인 시 이미 없음(아래 `## Rollback`)
 - 새 소스: `/Users/wowzoo/workspaces/platforms/agent-tools/memory/agent-memory`
 - 공유 운영 데이터: `/Users/wowzoo/.agent-memory`
 
@@ -52,11 +52,17 @@
 
 ## Rollback
 
-전환 문제가 발생하면 Claude·Codex의 command를 다음 기존 실행 파일로 되돌립니다.
+⚠️ **아래 절차는 더 이상 유효하지 않습니다.** 원본 소스 `/Users/wowzoo/Development/agent-memory`는
+2026-09-13 확인 시 이미 사라졌고(상위 `~/Development`째 없음), 그 `.venv/bin/agent-memory`로 command를
+되돌리면 서버가 기동하지 않습니다.
 
-`/Users/wowzoo/Development/agent-memory/.venv/bin/agent-memory`
+> ~~전환 문제가 발생하면 Claude·Codex의 command를 `/Users/wowzoo/Development/agent-memory/.venv/bin/agent-memory`로
+> 되돌립니다. 기존 소스와 가상환경을 보존하므로 즉시 롤백할 수 있습니다.~~
 
-기존 소스와 가상환경을 보존하므로 즉시 롤백할 수 있습니다.
+지금 되돌릴 곳은 다른 디렉터리가 아니라 이 저장소의 이전 커밋입니다. 이관 시점 HEAD는
+`29d43b9`(위 `## Git baseline`)이고 origin에도 있습니다. command는 그대로 두고 이 디렉터리에서
+해당 커밋을 체크아웃한 뒤 `uv sync`, 실행 중인 MCP 서버를 재시작합니다. 스키마는 전진만 하므로
+(`db._migrate`) 새 버전이 한 번이라도 연 DB를 옛 코드로 여는 경우는 따로 확인해야 합니다.
 
 ## Cutover completed — 2026-09-07
 
