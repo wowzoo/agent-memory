@@ -133,6 +133,20 @@ RERANK_MAX_TOKENS = _int("AGENT_MEMORY_RERANK_MAX_TOKENS", 512)
 # ⚠️ It deliberately leaves value on the table for hot-tier questions: 23.7 -> 36.8%
 # R@1 where always-on reaches 71.1%. A caller asking about a memory file's contents
 # should still pass `rerank=True` for that question.
+#
+# 🔴 Re-measured 2026-09-13 on a corpus twice that size, with the fixtures rebuilt and
+# the conditions made identical (same window, `ORDER BY id` so the verbatim slice is
+# fixed, gate path rather than off): **the 81.7 -> 33.3% collapse above does not
+# reproduce.** Forcing the reranker now *raises* R@1 on all three fixtures -- cold
+# 59.7 -> 83.3, hot 36.8 -> 57.9, verbatim 51.7 -> 66.7, pooled 51.8 -> 71.8% -- and
+# pooled R@5 with it (85.9 -> 88.3%). So the accuracy case for this gate is gone.
+# It stays on for the other half of the trade: measured the same day, the reranker costs
+# 4.6-6.5 s, not the ~3 s above, and cold queries are skipped 100% of the time, so they
+# answer in 0.06 s today. Ungating makes them 100x slower. ⇒ the open question is not
+# on/off, it is the cost curve: RERANK_DEPTH below 10 (never measured -- only 10 vs 20),
+# and relaxing this from three corroborating lanes to two. Until that is measured, three
+# lanes is not known to be the right condition; it is only known to cost 20%p of R@1.
+# See `docs/measurements.md` `### 정리 후 기준선`.
 RERANK_GATE = os.environ.get("AGENT_MEMORY_RERANK_GATE", "1").lower() not in (
     "0",
     "false",
