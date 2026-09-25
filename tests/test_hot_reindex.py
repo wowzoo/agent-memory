@@ -346,3 +346,35 @@ def test_two_processes_mirroring_one_directory_do_not_collide(store, monkeypatch
     assert con.execute("SELECT COUNT(*) FROM memories_fts").fetchone()[0] == memories
     assert orphan_count(con) == 0
     con.close()
+
+
+def test_a_sync_that_cannot_get_the_lock_answers_from_the_mirror(store):
+    """When another process holds the write lock past the busy timeout -- a full first
+    index of a large directory can take a minute -- sync must not fail the recall. It
+    reports `busy` and leaves the mirror as it stands; the next sync catches up.
+
+    The 30 s timeout in db.connect is per connection, so this one is shortened with
+    PRAGMA busy_timeout instead of waiting it out.
+    """
+    hot_dir, db, hot, _ = store
+    holder = db.connect()
+    con = db.connect()  # opened before the lock is taken: connect itself writes meta
+    con.execute("PRAGMA busy_timeout = 50")
+
+    (hot_dir / "a.md").write_text(MEMORY_A, encoding="utf-8")
+    holder.execute("BEGIN IMMEDIATE")
+    try:
+        stats = hot.sync(con)
+        assert stats["busy"] is True
+        assert stats["indexed"] == 0
+        assert not con.in_transaction
+        assert con.execute("SELECT COUNT(*) FROM memories").fetchone()[0] == 0
+    finally:
+        holder.rollback()
+        holder.close()
+
+    stats = hot.sync(con)
+    assert "busy" not in stats
+    assert stats["indexed"] == 1
+    assert orphan_count(con) == 0
+    con.close()
