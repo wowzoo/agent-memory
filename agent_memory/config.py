@@ -195,6 +195,12 @@ RESCUE_LANE_LEADERS = os.environ.get(
 #   - a flat score multiplier for hot: dropped the fixture's cold targets to
 #     hybrid R@1 0% / R@5 40% (from 55% / 90% cold-only), because it promoted files
 #     even for questions the files do not answer.
+#     ⚠️ That verdict holds only for a large multiplier with no slot reserved. Re-run
+#     on 2026-08-21 (scripts/experiment_hot_boost.py, limit=5, slots=0): cold R@5
+#     76.4% baseline -> 62.5% at mul 1.0 -> 20.8% at 2.0, so the old record sits
+#     between the two. With two slots reserved (the default then), mul 0.1 left cold
+#     R@1/R@5 unchanged and still lifted hot-only R@1 42.3% -> 50.0%. Not adopted:
+#     the hot fixture is self-authored, so it waits for a held-out set of real drops.
 #   - strict tier interleaving: recovered R@5 to 80% but pinned R@1 at 0% by always
 #     spending slot 1 on a hot row, and cost MRR (0.394 vs 0.520 for one pool).
 #

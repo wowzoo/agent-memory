@@ -398,7 +398,7 @@ python scripts/annotate.py batch.json
 ## 검증
 
 ```bash
-.venv/bin/python -m pytest tests/ -q                       # 34 tests
+.venv/bin/python -m pytest tests/ -q                       # 81 tests
 .venv/bin/python scripts/eval_paraphrase.py                # 튜닝용 (두 계층)
 .venv/bin/python scripts/eval_paraphrase.py --tier cold    # 엔진 성능만
 .venv/bin/python scripts/eval_recall.py                    # 회귀 감지용
