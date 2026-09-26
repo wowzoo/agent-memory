@@ -103,6 +103,13 @@ def mem_write(
     case and spacing alone, so two spellings of one name merge into a single entity
     and a blank name is skipped. Seeing the extra key means some input did not land
     one-for-one; its absence means everything did.
+
+    Content that looks like a credential (AWS key, GitHub/Slack/API token, private
+    key, `password=...`) is refused with an error and nothing is stored — once in the
+    archive its bytes outlive a delete. Redact the value and write again.
+    A write nearly identical to an existing cold memory (cosine ≥ 0.95) is stored,
+    and `near_duplicate` plus a `warning` name that memory: mark it with
+    `supersedes` if this replaces it. No warning when `supersedes` already names it.
     """
     _learn_client(ctx)
     with db.connect() as con:

@@ -77,6 +77,12 @@ def _float(name: str, default: float) -> float:
         return default
 
 
+# Cosine between the mean chunk vectors of a new write and an existing cold memory at
+# or above which mem_write reports a near-duplicate (it still stores). Measured on the
+# live store (2026-09-26, 663 cold): 2 pairs at >= 0.95, both the same memory rewritten
+# within a minute; 0.90..0.95 holds 37 more, mostly distinct sessions on one topic.
+DUPLICATE_SIMILARITY = _float("AGENT_MEMORY_DUPLICATE_SIMILARITY", 0.95)
+
 # bm25() column weights for (topic, body). Measured on 20 paraphrase queries:
 # 3x/1x took the fused lane from R@1 20.0% / MRR 0.437 to 45.0% / 0.599 together
 # with the topic vector below.

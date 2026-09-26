@@ -44,9 +44,12 @@
 
 새 실행 파일 준비 후 다음 소비자의 command를 새 `.venv/bin/agent-memory`로 전환합니다.
 
-- Claude Code 프로젝트 범위 등록 8곳 (`/Users/wowzoo/.claude.json`)
+- Claude Code 프로젝트 범위 등록 8곳 (`/Users/wowzoo/.claude.json`) — ⚠️ 2026-09-26 확인 시 프로젝트 범위
+  등록은 0곳이고 user 범위 1곳이 새 command를 쓴다(`AGENT_MEMORY_AGENT=claude`)
 - Codex 전역 등록 1곳 (`/Users/wowzoo/.codex/config.toml`)
-- Kiro/KiroCrew는 현재 활성 등록이 없어 변경하지 않음
+- Kiro/KiroCrew는 현재 활성 등록이 없어 변경하지 않음 — ⚠️ 2026-09-26 확인 시 활성 등록 3곳이 새 command를
+  쓴다: 전역 `~/.kiro/settings/mcp.json`, KiroCrew 에이전트 `~/.kiro/agents/kirocrew.json`·`kirocrew-worker.json`
+  (셋 다 `AGENT_MEMORY_AGENT=kiro`)
 
 실행 중인 기존 MCP 프로세스는 종료하지 않고, 새 세션부터 새 실행 파일을 사용하게 합니다.
 
@@ -68,9 +71,10 @@
 
 - 새 `.venv` 생성: CPython 3.13.5, `uv sync --frozen --no-dev`
 - 핵심 테스트: 27 passed
-- Claude Code: 기존 프로젝트 8곳 + 새 프로젝트 1곳, 모두 새 command 사용
+- Claude Code: 기존 프로젝트 8곳 + 새 프로젝트 1곳, 모두 새 command 사용 — ⚠️ 지금은 user 범위 1곳
+  (위 `## Consumer cutover`)
 - Codex: 전역 등록 1곳, 새 command 사용
-- Kiro/KiroCrew: 활성 등록 없음, 변경 없음
+- Kiro/KiroCrew: 활성 등록 없음, 변경 없음 — ⚠️ 지금은 3곳 등록(위 `## Consumer cutover`)
 - 공유 라이브 DB read-only 확인: memories 1666, sessions 203, entities 2686, relations 3080
 - 동시 MCP 클라이언트 스모크: 2개 클라이언트가 같은 scratch DB 복사본에서 lexical recall 성공
 - 기존 MCP 프로세스와 기존 소스는 종료·삭제하지 않음

@@ -343,7 +343,11 @@ python scripts/annotate.py batch.json
 ## 툴
 
 - **`mem_write(content, session=, topic=, project=, entities=, relations=)`** — 기억 저장.
-  결정·근거·결과를 남기고 지나가는 잡담은 남기지 않습니다.
+  결정·근거·결과를 남기고 지나가는 잡담은 남기지 않습니다. 비밀정보 모양(AWS 키, GitHub·Slack·API
+  토큰, private key, `password=…`)이 보이면 **저장하지 않고** error 를 돌려줍니다 — 한 번 들어가면
+  `mem_forget` 으로 지워도 VACUUM 전까지 바이트가 남기 때문입니다. 기존 cold 기억과 거의 같으면
+  (cosine ≥ 0.95) 저장은 하고 `near_duplicate` 로 그 기억을 알려 줍니다(`supersedes` 로 이미
+  가리켰으면 조용합니다).
 - **`mem_recall(query, limit=, session=, project=, detail=, mode=, tier=, rerank=, agent=)`** —
   렉시컬(Kiwi+BM25) · 시맨틱(청크 임베딩) · 개념 그래프 co-citation(hybrid 에서만, 절반 가중)
   세 레인을 RRF로 융합. hot/cold를 함께 검색해 구분 반환합니다. `rerank=True`는 상위 10건을
@@ -374,6 +378,7 @@ python scripts/annotate.py batch.json
 | `AGENT_MEMORY_QUERY_PREFIX` / `_PASSAGE_PREFIX` | `query: ` / `passage: ` (e5 계열 필수) |
 | `AGENT_MEMORY_CHUNK_TOKENS` / `_CHUNK_OVERLAP` | `400` / `80` |
 | `AGENT_MEMORY_MAX_CONTENT_CHARS` | `50000` (`mem_write` 본문 상한. 지금까지 가장 긴 기억은 8,838자) |
+| `AGENT_MEMORY_DUPLICATE_SIMILARITY` | `0.95` (`near_duplicate` 경고 임계값. 라이브 cold 663건에서 2쌍, 둘 다 1분 안에 다시 쓴 기억) |
 | `AGENT_MEMORY_TOPIC_WEIGHT` / `_BODY_WEIGHT` | `3.0` / `1.0` (bm25 컬럼 가중) |
 | `AGENT_MEMORY_RRF_K` / `_CANDIDATE_POOL` | `10` / `50` (k 는 이 코퍼스 크기에 맞춰 60에서 내림) |
 | `AGENT_MEMORY_GRAPH_LANE_WEIGHT` / `_GRAPH_LANE_SEEDS` | `0.75` / `3` (`0`이면 그래프 레인 끔) |
@@ -398,7 +403,7 @@ python scripts/annotate.py batch.json
 ## 검증
 
 ```bash
-.venv/bin/python -m pytest tests/ -q                       # 81 tests
+.venv/bin/python -m pytest tests/ -q                       # 전체 테스트
 .venv/bin/python scripts/eval_paraphrase.py                # 튜닝용 (두 계층)
 .venv/bin/python scripts/eval_paraphrase.py --tier cold    # 엔진 성능만
 .venv/bin/python scripts/eval_recall.py                    # 회귀 감지용

@@ -113,6 +113,56 @@ def _entity_json_in(content: str) -> str | None:
     return None
 
 
+# Credential shapes a memory should never hold. Refused rather than reported: once
+# stored, the bytes survive a DELETE in FTS segments, freed pages and the WAL until
+# `forget` runs an FTS optimize and a VACUUM. None of these matched any of the 2,4xx
+# memories in the live store (2026-09-26), so the refusal costs no existing writer.
+_SECRETS = {
+    "AWS access key": re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"),
+    "GitHub token": re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{36}|github_pat_\w{50,})"),
+    "API key": re.compile(r"\b(?:sk-(?:ant-)?[\w-]{20,}|tvly-[A-Za-z0-9]{20,})"),
+    "Slack token": re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}"),
+    "private key": re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
+    "credential assignment": re.compile(
+        r"(?i)\b(?:password|passwd|pwd|secret|api[_-]?key|token)\s*[:=]\s*['\"]?[^\s'\"`]{8,}"
+    ),
+}
+
+
+def _secret_in(*texts: str) -> str | None:
+    """Which kind of credential the text holds, never the value itself."""
+    for kind, pattern in _SECRETS.items():
+        if any(pattern.search(text) for text in texts):
+            return kind
+    return None
+
+
+def _near_duplicate(con: sqlite3.Connection, vectors: np.ndarray) -> dict | None:
+    """The cold memory closest to these chunk vectors, if it clears
+    `DUPLICATE_SIMILARITY`. Memories are compared by their mean chunk vector."""
+    query = vectors.mean(axis=0)
+    query /= np.linalg.norm(query)
+    sums: dict[str, np.ndarray] = {}
+    for row in con.execute(
+        "SELECT c.memory_id, c.embedding FROM memory_chunks c "
+        "JOIN memories m ON m.id = c.memory_id WHERE m.tier = 'cold'"
+    ):
+        vec = embedding.from_blob(row[1])
+        sums[row[0]] = sums[row[0]] + vec if row[0] in sums else vec.copy()
+    best, best_id = config.DUPLICATE_SIMILARITY, None
+    for memory_id, total in sums.items():
+        similarity = float(total @ query / np.linalg.norm(total))
+        if similarity >= best:
+            best, best_id = similarity, memory_id
+    if best_id is None:
+        return None
+    row = con.execute(
+        "SELECT topic, created_at FROM memories WHERE id = ?", (best_id,)
+    ).fetchone()
+    return {"memory_id": best_id, "topic": row[0], "created_at": row[1],
+            "similarity": round(best, 3)}
+
+
 def write(
     con: sqlite3.Connection,
     content: str,
@@ -135,6 +185,16 @@ def write(
             ),
         }
 
+    secret = _secret_in(content, topic or "")
+    if secret:
+        return {
+            "status": "error",
+            "message": (
+                f"content looks like it holds a {secret}; nothing was stored. Redact "
+                "the value and write it again."
+            ),
+        }
+
     agent = detect_agent()
     if session:
         db.set_meta(con, _session_key(agent), session)
@@ -142,6 +202,10 @@ def write(
         session = active_session(con, agent)
     topic = (topic or content.splitlines()[0])[:120].strip()
     project = project if project is not None else detect_project()
+
+    chunks = embedding.passages(topic, content)
+    vectors = embedding.encode_passages(chunks)
+    duplicate = _near_duplicate(con, vectors)  # before the insert, so not against itself
 
     memory_id = uuid.uuid4().hex
     con.execute(
@@ -154,9 +218,6 @@ def write(
         "INSERT INTO memories_fts(topic, body, memory_id) VALUES (?, ?, ?)",
         (korean.index_text(topic), korean.index_text(content), memory_id),
     )
-
-    chunks = embedding.passages(topic, content)
-    vectors = embedding.encode_passages(chunks)
     con.executemany(
         "INSERT INTO memory_chunks(memory_id, idx, text, embedding) VALUES (?, ?, ?, ?)",
         [
@@ -198,13 +259,27 @@ def write(
         result["supersedes"] = (
             marked["superseded"] if marked["status"] == "ok" else marked["message"]
         )
+        if marked["status"] == "ok" and duplicate and (
+            duplicate["memory_id"] == marked["superseded"]["id"]
+        ):
+            duplicate = None  # the caller already said this replaces it
+    warnings = []
     stray = _entity_json_in(content)
     if stray:
-        result["warning"] = (
+        warnings.append(
             f"content contains an entity-shaped JSON array ({len(stray)} chars). If "
             "that is the `entities` argument pasted into the text, the prose kept a "
             "copy of it and this memory's last chunk embeds JSON rather than prose."
         )
+    if duplicate:
+        result["near_duplicate"] = duplicate
+        warnings.append(
+            f"stored, but it is nearly identical to {duplicate['memory_id'][:8]} "
+            f"(cosine {duplicate['similarity']}). If this replaces that memory, mark "
+            "it with `supersedes`; if it was written twice by mistake, `mem_forget` one."
+        )
+    if warnings:
+        result["warning"] = "\n".join(warnings)
     return result
 
 
