@@ -238,6 +238,11 @@ def sync(con, force: bool = False) -> dict:
     section is embedded again, which is what a model swap needs. Without it, sections
     that still hash the same are left alone, vectors and graph annotations included.
     """
+    # Every delete below leaves chunks, entity links and relations to ON DELETE
+    # CASCADE, which a bare sqlite3.connect() does not enforce. One such call from
+    # another project's session left 98 orphan rows in the live store (2026-08-31).
+    if not con.execute("PRAGMA foreign_keys").fetchone()[0]:
+        raise ValueError("hot.sync needs PRAGMA foreign_keys on; open it with db.connect()")
     digests = {}
     for path in _files():
         try:

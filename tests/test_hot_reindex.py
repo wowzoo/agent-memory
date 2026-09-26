@@ -378,3 +378,43 @@ def test_a_sync_that_cannot_get_the_lock_answers_from_the_mirror(store):
     assert stats["indexed"] == 1
     assert orphan_count(con) == 0
     con.close()
+
+
+def test_a_sync_on_a_connection_without_foreign_keys_is_refused(store):
+    """Replacing an edited section deletes its old row and leaves chunks, entity links
+    and relations to ON DELETE CASCADE -- which only fires with PRAGMA foreign_keys on.
+    A bare sqlite3.connect() has it off. That is how 98 orphan rows reached the live
+    store: on 2026-08-31 another project's session ran
+    `hot.sync(sqlite3.connect(DB))` to see its edits, and the 8 sections it replaced
+    left their children behind. The sync must refuse such a connection, not half-work.
+    """
+    import sqlite3
+
+    from agent_memory import config, graph
+
+    hot_dir, db, hot, _ = store
+    (hot_dir / "a.md").write_text(TWO_SECTIONS, encoding="utf-8")
+    con = db.connect()
+    hot.sync(con)
+    edited = section_id(con, "두 번째 주제")
+    graph.attach(con, edited, [{"name": "원인"}, {"name": "결과"}],
+                 [{"source": "원인", "predicate": "causes", "target": "결과"}])
+    con.close()
+
+    os.utime(hot_dir / "a.md", (0, 0))
+    (hot_dir / "a.md").write_text(EDITED_SECOND, encoding="utf-8")
+    raw = sqlite3.connect(config.DB_PATH)
+    raw.row_factory = sqlite3.Row  # the 2026-08-31 call set this too, after a TypeError
+    with pytest.raises(ValueError, match="foreign_keys"):
+        hot.sync(raw)
+    raw.close()
+
+    con = db.connect()
+    assert section_id(con, "두 번째 주제") == edited  # nothing was replaced
+    hot.sync(con)
+    for table in ("memory_chunks", "memory_entities", "relations"):
+        assert con.execute(
+            f"SELECT COUNT(*) FROM {table} t "
+            "WHERE NOT EXISTS (SELECT 1 FROM memories m WHERE m.id = t.memory_id)"
+        ).fetchone()[0] == 0, table
+    con.close()
