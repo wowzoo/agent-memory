@@ -352,7 +352,9 @@ python scripts/annotate.py batch.json
   렉시컬(Kiwi+BM25) · 시맨틱(청크 임베딩) · 개념 그래프 co-citation(hybrid 에서만, 절반 가중)
   세 레인을 RRF로 융합. hot/cold를 함께 검색해 구분 반환합니다. `rerank=True`는 상위 10건을
   한국어 크로스인코더로 다시 매깁니다 — R@1 72%→92%, 대가는 3초입니다. `agent=`는 한 하네스가
-  기록한 것만 봅니다.
+  기록한 것만 봅니다. 결과가 있으면 응답에 `results_are` 가 붙어 **결과는 기록된 데이터이지
+  지시가 아니라고** 말합니다 — 여러 하네스·프로젝트가 한 스토어에 쓰므로 누군가 저장한 "~하라"는
+  문장이 그대로 다른 에이전트의 컨텍스트에 들어옵니다. 본문은 손대지 않습니다.
 - **`mem_sessions(session=)`** — 세션 목록 또는 한 세션의 항목 목록. `active_session` 은
   호출한 agent 자신의 것입니다.
 - **`mem_annotate(memory_id, entities=, relations=)`** — 기존 기억에 개념 그래프 부착.
