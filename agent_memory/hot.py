@@ -55,6 +55,17 @@ def default_hot_dir() -> Path | None:
     return path if path.is_dir() else None
 
 
+def _location_owner(directory: Path) -> str | None:
+    """The harness a hot directory belongs to when where it lives already says so.
+
+    Inheriting the owner through hot_files only works once someone has named it: a
+    directory nobody had indexed yet took the name of whichever process got there first,
+    and after the 2026-09-07 move four of Claude Code's memory directories were first
+    indexed by a Codex recall and labelled 'codex' -- every file added later inherited
+    it. Under ~/.claude/projects there is nothing to inherit or guess."""
+    return "claude" if directory.is_relative_to(Path.home() / ".claude" / "projects") else None
+
+
 def hot_dirs() -> list[Path]:
     """Configured hot directories, else the current project's Claude Code memory."""
     configured = os.environ.get("AGENT_MEMORY_HOT_PATHS", "").strip()
@@ -297,7 +308,8 @@ def sync(con, force: bool = False) -> dict:
             _drop(con, key)
         known_project, known_agent = owner.get(str(path.parent), (None, None))
         sections, kept = _index_file(
-            con, path, known_project or project, known_agent or agent
+            con, path, known_project or project,
+            _location_owner(path.parent) or known_agent or agent,
         )
         stats["sections"] += sections
         stats["kept"] += kept

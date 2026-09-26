@@ -144,6 +144,27 @@ def test_hot_sections_inherit_the_directory_owner(store, monkeypatch):
     ] == 0
 
 
+def test_a_claude_directory_first_indexed_by_codex_is_still_claude(store, monkeypatch, tmp_path):
+    """Inheriting the owner only works once someone has named it. A directory under
+    ~/.claude/projects that a Codex recall indexes first -- which is what happened to
+    four directories after the 2026-09-07 move -- is Claude Code's by where it lives,
+    and every file added to it later inherited 'codex' from that first index."""
+    _, db, hot, _ = store
+    monkeypatch.setenv("HOME", str(tmp_path))
+    claude_dir = tmp_path / ".claude" / "projects" / "-p" / "memory"
+    claude_dir.mkdir(parents=True)
+    (claude_dir / "a.md").write_text(MEMORY_A, encoding="utf-8")
+    monkeypatch.setenv("AGENT_MEMORY_HOT_PATHS", str(claude_dir))
+
+    monkeypatch.setenv("AGENT_MEMORY_AGENT", "codex")
+    con = db.connect()
+    assert hot.sync(con)["indexed"] == 1
+    assert {r["agent"] for r in con.execute("SELECT agent FROM hot_files")} == {"claude"}
+    assert {
+        r["agent"] for r in con.execute("SELECT agent FROM memories WHERE tier = 'hot'")
+    } == {"claude"}
+
+
 def test_migration_adds_the_columns_to_an_existing_store(store):
     """A v7 store gains both columns, and its hot rows are attributed from their path."""
     _, db, _, _ = store
