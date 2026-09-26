@@ -1,0 +1,77 @@
+{
+  "description": "Queries with no answer anywhere in the store, for measuring whether recall can tell it has nothing. Authored 2026-09-26. Each case's key terms were searched across every memory's topic and content first; where a term did occur the hit was read and found incidental. Cases whose premise a stored memory refutes (for instance 'the day agent-memory went public', answered by the memory on why it is private) were excluded: a refutation is an answer. off_domain asks about fields the store never covers; near_domain uses the store's own vocabulary for events that never happened, which is the hard half. Writing any of these queries into a memory file makes it answerable -- keep them out of hot and cold. Revised the same day after a cross-review: five cases were dropped because a memory answers or refutes them (Figma packaging; SQLite chosen over a heavier backend; the embedding model confirmed as kept; the hot/cold storage design; clean-up triggered by the user, not a timer). The first check matched exact key terms, which cannot see a memory that refutes a premise in other words.",
+  "cases": [
+    {
+      "group": "off_domain",
+      "query": "쿠버네티스 HPA 임계값을 바꿨던 회차가 언제였지"
+    },
+    {
+      "group": "off_domain",
+      "query": "사내 휴가 신청 시스템에서 결재가 멈추던 오류 원인"
+    },
+    {
+      "group": "off_domain",
+      "query": "React Native 앱 빌드가 깨졌을 때 어떻게 고쳤더라"
+    },
+    {
+      "group": "off_domain",
+      "query": "PostgreSQL 인덱스 튜닝해서 쿼리 빨라진 결과"
+    },
+    {
+      "group": "off_domain",
+      "query": "Terraform state 잠금 풀었던 일"
+    },
+    {
+      "group": "off_domain",
+      "query": "iOS 푸시 알림 인증서 갱신 절차 정리한 거"
+    },
+    {
+      "group": "off_domain",
+      "query": "Spark 잡이 메모리 부족으로 죽던 문제"
+    },
+    {
+      "group": "off_domain",
+      "query": "주식 자동매매 봇 손절 규칙 정한 거"
+    },
+    {
+      "group": "off_domain",
+      "query": "엑셀 매크로로 월간 보고서 자동화한 작업"
+    },
+    {
+      "group": "off_domain",
+      "query": "Kafka 컨슈머 랙이 쌓이던 원인 찾은 거"
+    },
+    {
+      "group": "off_domain",
+      "query": "안드로이드 ProGuard 설정 때문에 크래시 나던 일"
+    },
+    {
+      "group": "near_domain",
+      "query": "리랭커를 GPU 로 돌려서 지연을 줄인 실험"
+    },
+    {
+      "group": "near_domain",
+      "query": "mem_recall 에 시간 범위 필터를 추가한 커밋"
+    },
+    {
+      "group": "near_domain",
+      "query": "AI-DLC v3 상류 릴리스를 우리가 대신 태깅한 일"
+    },
+    {
+      "group": "near_domain",
+      "query": "슬랙 채널에 recall 결과를 자동 게시하게 만든 봇"
+    },
+    {
+      "group": "near_domain",
+      "query": "메모리 스토어를 S3 로 매일 백업하게 한 작업"
+    },
+    {
+      "group": "near_domain",
+      "query": "agent-memory 에 웹 대시보드를 붙인 작업"
+    },
+    {
+      "group": "near_domain",
+      "query": "mem_write 에 이미지 첨부를 지원하게 바꾼 커밋"
+    }
+  ]
+}
