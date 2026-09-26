@@ -228,7 +228,9 @@ def mem_recall(
     So an archived copy *can* outrank the file that corrected it — measured, one case
     in the fixture. What tells you is `superseded_by` on the result, when someone
     marked the correction (see `mem_write(supersedes=...)`), plus `MIN_TIER_SLOTS`
-    keeping both tiers present. Read `created_at` when neither is there.
+    keeping both tiers present. Read `created_at` when neither is there. When the
+    correction was itself corrected, the block also carries `current` — the end of
+    the chain, which is what is true now — and `hops`, the number of links to it.
 
     Three lanes are fused by reciprocal rank: a Kiwi-morpheme BM25 lane (so "패치"
     matches "패치를", which whitespace tokenizers miss), a Korean-tuned embedding

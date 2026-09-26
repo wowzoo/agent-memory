@@ -371,6 +371,21 @@ def _supersession(con: sqlite3.Connection, row: sqlite3.Row) -> dict | None:
     block.update({"id": target["id"], "topic": target["topic"], "tier": target["tier"]})
     if target["tier"] == "hot":
         block["path"] = target["path"]
+    # Follow the chain to what is current now. Measured on 76 real chains (2026-09-26):
+    # a third of the stale-first cases were two or more links long, so the link above
+    # alone led the reader to another stale memory. Only added when the chain is longer
+    # than one link, so the keys' presence means "the replacement was replaced too".
+    seen, hops, current = {row["id"], target["id"]}, 1, target
+    while current["superseded_by"]:
+        nxt = resolve_ref(con, current["superseded_by"])
+        if nxt is None or nxt["id"] in seen:
+            break
+        seen.add(nxt["id"])
+        hops, current = hops + 1, nxt
+    if hops > 1:
+        block["current"] = {"id": current["id"], "topic": current["topic"],
+                            "tier": current["tier"]}
+        block["hops"] = hops
     return block
 
 

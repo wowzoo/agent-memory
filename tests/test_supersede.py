@@ -141,3 +141,33 @@ def test_a_hot_section_can_be_the_correction(store, tmp_path, monkeypatch):
     block = next(r["superseded_by"] for r in results if r["id"] == old["memory_id"])
     assert block["tier"] == "hot" and block["path"] == str(note)
     con.close()
+
+
+def test_a_chain_names_its_current_version(store):
+    """Measured 2026-09-26 on 76 real chains: 24 of the 74 where the stale version came
+    first were two or more links long, and the block resolved one link -- so following
+    it led the reader to another stale memory."""
+    db, store_module = store
+    con, old, new = two_versions(db, store_module)
+    newest = store_module.write(
+        con, "빈 장 검사는 deck_to_pdf.py 의 네 번째 검사다 — 흡수 위치를 확정했다.",
+        session="t", supersedes=new["memory_id"][:8],
+    )
+    by_id = {r["id"]: r for r in store_module.recall(
+        con, "빈 장 검사 스크립트", limit=5, rerank=False)["results"]}
+    block = by_id[old["memory_id"]]["superseded_by"]
+    assert block["id"] == new["memory_id"]  # the link itself is unchanged
+    assert block["current"]["id"] == newest["memory_id"]
+    assert block["hops"] == 2
+    # One link long: no extra keys, so their presence always means "replaced again".
+    assert "current" not in by_id[new["memory_id"]]["superseded_by"]
+    con.close()
+
+
+def test_a_cycle_does_not_hang_recall(store):
+    db, store_module = store
+    con, old, new = two_versions(db, store_module)
+    assert store_module.supersede(con, new["memory_id"], old["memory_id"])["status"] == "ok"
+    results = store_module.recall(con, "빈 장 검사 스크립트", limit=5, rerank=False)["results"]
+    assert {r["id"] for r in results} >= {old["memory_id"], new["memory_id"]}
+    con.close()
