@@ -1,0 +1,573 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>agent-memory</title>
+<style>
+  :root { --fg:#1d1d1f; --mute:#6b6b70; --line:#e3e3e8; --bg:#f7f7f9; --card:#fff;
+          --ok:#2f9e44; --warn:#e8890c; --error:#d6336c; --info:#868e96; --hot:#e8590c; --cold:#1c7ed6; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 -apple-system, "Apple SD Gothic Neo", sans-serif; color: var(--fg); background: var(--bg); }
+  header { padding: 14px 24px; background: var(--card); border-bottom: 1px solid var(--line); }
+  header b { font-size: 16px; margin-right: 12px; }
+  header span { color: var(--mute); }
+  nav { display: flex; gap: 4px; padding: 0 24px; background: var(--card); border-bottom: 1px solid var(--line); }
+  nav button { border: 0; background: none; padding: 10px 14px; font: inherit; color: var(--mute); cursor: pointer; border-bottom: 2px solid transparent; }
+  nav button.on { color: var(--fg); border-color: var(--fg); }
+  main { padding: 20px 24px; max-width: 1400px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  h2 { font-size: 13px; color: var(--mute); margin: 0 0 10px; font-weight: 600; }
+  .check { display: grid; grid-template-columns: 16px 180px 1fr; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); }
+  .check:first-of-type { border-top: 0; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 6px; }
+  .note { color: var(--mute); font-size: 12px; }
+  details summary { cursor: pointer; color: var(--mute); font-size: 12px; }
+  details ul { margin: 4px 0; padding-left: 18px; font-size: 12px; max-height: 260px; overflow: auto; }
+  code, .mono { font: 12px ui-monospace, Menlo, monospace; }
+  .perf { white-space: pre-wrap; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  table { border-collapse: collapse; width: 100%; }
+  td, th { text-align: left; padding: 4px 6px; border-top: 1px solid var(--line); vertical-align: top; }
+  th { font-weight: 600; color: var(--mute); font-size: 12px; border-top: 0; }
+  td.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .bar { display: flex; height: 8px; min-width: 2px; border-radius: 2px; overflow: hidden; }
+  .bar i { display: block; }
+  .filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+  .filters input[type=search] { flex: 1; min-width: 200px; }
+  select, input { font: inherit; padding: 4px 6px; border: 1px solid var(--line); border-radius: 4px; background: #fff; }
+  .browse { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+  .list tr { cursor: pointer; }
+  .list tr:hover td, .list tr.sel td { background: #f1f3f5; }
+  .tag { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 9px; background: #f1f3f5; color: var(--mute); margin-right: 4px; }
+  .tag.hot { background: #fff4e6; color: var(--hot); }
+  .tag.cold { background: #e7f5ff; color: var(--cold); }
+  .tag.sup { background: #fff0f6; color: var(--error); }
+  .body { white-space: pre-wrap; font-size: 13px; max-height: 60vh; overflow: auto; border-top: 1px solid var(--line); padding-top: 8px; }
+  .detail { position: sticky; top: 12px; }
+  .pager { display: flex; gap: 8px; align-items: center; margin-top: 8px; color: var(--mute); }
+  .snippet { color: var(--mute); font-size: 12px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .stages { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(150px, 1fr); gap: 10px; overflow-x: auto; }
+  .stages ol { margin: 0; padding-left: 20px; font-size: 12px; }
+  .stages li { padding: 2px 0; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .stages li.final { font-weight: 600; }
+  .stages li.hl { background: #fff3bf; }
+  .stages h3 { font-size: 12px; margin: 0 0 4px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin: 0 4px 0 10px; vertical-align: -1px; }
+  .gbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .gbar button { font: inherit; padding: 4px 10px; border: 1px solid var(--line); border-radius: 4px; background: #fff; cursor: pointer; }
+  .gbar button.on { background: var(--fg); color: #fff; border-color: var(--fg); }
+  .glegend { margin-left: auto; display: flex; flex-wrap: wrap; gap: 12px; }
+  .glegend span { cursor: pointer; user-select: none; }
+  .glegend span.off { opacity: .35; text-decoration: line-through; }
+  .glegend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
+  .gwrap { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
+  #g-canvas { width: 100%; height: 72vh; display: block; border-radius: 8px; cursor: grab; touch-action: none;
+              background: radial-gradient(ellipse at center, #fafafb 55%, #e6e6ec 100%); }
+  #g-panel ul { list-style: none; padding: 0; margin: 0; font-size: 13px; max-height: 32vh; overflow: auto; }
+  #g-panel li { padding: 3px 0; border-top: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<header><b>agent-memory</b><span id="summary">불러오는 중…</span></header>
+<nav><button data-tab="status" class="on">상태</button><button data-tab="recall">회수</button><button data-tab="content">내용</button><button data-tab="graph">그래프</button></nav>
+<main>
+  <div id="status"></div>
+  <div id="recall" hidden>
+    <section>
+      <div class="filters">
+        <input type="search" id="r-q" placeholder="질의 — Enter 로 실행">
+        <select id="r-rerank" title="mem_recall 의 rerank 인자">
+          <option value="">rerank 자동 (게이트)</option><option value="on">rerank 강제 on</option><option value="off">rerank off</option></select>
+        <select id="r-limit"><option selected>5</option><option>10</option><option>20</option></select>
+        <select id="r-project"><option value="">모든 프로젝트</option></select>
+        <select id="r-tier"><option value="">모든 tier</option><option>cold</option><option>hot</option></select>
+        <select id="r-agent"><option value="">모든 agent</option></select>
+      </div>
+      <div class="note">mem_recall 과 같은 store.recall() 을 같은 기본값으로 부른다. 단 hot 미러를 sync 하지 않으므로, 상태 탭의 "hot 원본 변경" 파일은 바뀌기 전 내용으로 검색된다. 첫 질의는 모델을 올리느라 수 초 걸린다.</div>
+      <div id="r-meta" style="margin:10px 0"></div>
+      <table class="list"><tbody id="r-rows"></tbody></table>
+    </section>
+    <section>
+      <h2>recall-log 재생 — 실사용 질의의 정답이 지금 몇 위인가</h2>
+      <div class="note">각 드롭을 두 번 돌린다: 기록 당시의 limit·rerank 그대로, 그리고 지금 기본값(limit 5, rerank 자동).
+        창 밖이면 창을 넓혀 찾지 않는다 — 넓히면 tier 슬롯·구제가 다르게 동작한다. 융합 순위는 리랭크·슬롯·구제 전, max(limit, 리랭크 깊이) 안에서만.</div>
+      <button id="rl-run" style="margin:8px 0">재생</button>
+      <table><tbody id="rl-rows"></tbody></table>
+    </section>
+    <section id="r-trace" hidden>
+      <h2>단계별 창 — 각 단계가 다음 단계에 넘긴 순서</h2>
+      <div class="note" id="r-timing" style="margin-bottom:8px"></div>
+      <div class="stages" id="r-stages"></div>
+    </section>
+  </div>
+  <div id="content" hidden>
+    <section>
+      <h2>기억 목록</h2>
+      <div class="filters">
+        <select id="f-project"><option value="">모든 프로젝트</option></select>
+        <select id="f-tier"><option value="">모든 tier</option><option>cold</option><option>hot</option></select>
+        <select id="f-agent"><option value="">모든 agent</option></select>
+        <label><input type="checkbox" id="f-sup"> 정정된 것만</label>
+        <input type="search" id="f-q" placeholder="topic·본문에 포함된 문자열">
+      </div>
+      <div class="browse">
+        <div><table class="list"><tbody id="rows"></tbody></table><div class="pager" id="pager"></div></div>
+        <div class="detail" id="detail"><span class="note">왼쪽에서 기억을 고르면 본문이 여기 나옵니다.</span></div>
+      </div>
+    </section>
+    <div class="grid" id="dist"></div>
+  </div>
+  <div id="graph" hidden>
+    <section>
+      <div class="gbar">
+        <b id="g-count"></b>
+        <button id="g-fit">Recenter</button>
+        <button id="g-physics" class="on">Physics</button>
+        <select id="g-project"><option value="">모든 프로젝트</option></select>
+        <select id="g-tier"><option value="">모든 tier</option><option>cold</option><option>hot</option></select>
+        <select id="g-limit"><option>100</option><option selected>200</option><option>400</option></select>
+        <div class="glegend" id="g-legend"></div>
+      </div>
+      <div class="note" id="g-note" style="margin-bottom:8px"></div>
+      <div class="gwrap">
+        <canvas id="g-canvas"></canvas>
+        <div id="g-panel"><span class="note">노드를 누르면 그 엔티티를 언급한 기억과 이웃이 여기 나옵니다.</span></div>
+      </div>
+    </section>
+  </div>
+</main>
+<script>
+const COLORS = { ok: "var(--ok)", warn: "var(--warn)", error: "var(--error)", info: "var(--info)" };
+
+// Every string from the store goes through textContent: memory bodies are markdown and
+// routinely contain things that look like HTML.
+function h(tag, attrs = {}, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "style") el.style.cssText = v; else if (k.startsWith("on")) el[k] = v; else el.setAttribute(k, v);
+  }
+  for (const kid of kids.flat()) if (kid != null) el.append(kid instanceof Node ? kid : String(kid));
+  return el;
+}
+const api = (path, params = {}) =>
+  fetch(path + "?" + new URLSearchParams(params)).then(r => r.ok ? r.json() : null);
+const num = n => typeof n === "number" ? n.toLocaleString() : n;
+
+// Bold and inline code only -- enough for the README paragraph, and nothing that needs innerHTML.
+function inlineMd(text) {
+  return text.split(/(\*\*[^*]+\*\*|`[^`]+`)/).map(part =>
+    part.startsWith("**") ? h("b", {}, part.slice(2, -2)) :
+    part.startsWith("`") ? h("code", {}, part.slice(1, -1)) : part);
+}
+
+function checkRow(c) {
+  const rows = c.rows.length ? h("details", {}, h("summary", {}, `${c.rows.length}건 보기`),
+    h("ul", {}, c.rows.map(r => h("li", {}, r.topic, " ", h("span", { class: "note mono" }, r.detail),
+      r.id ? h("span", { class: "note mono" }, " ", r.id.slice(0, 8)) : null)))) : null;
+  return h("div", { class: "check" },
+    h("div", { class: "dot", style: `background:${COLORS[c.level]}` }),
+    h("div", {}, c.label),
+    h("div", {}, h("span", { class: "mono" }, num(c.value)), c.note ? h("div", { class: "note" }, c.note) : null, rows));
+}
+
+async function loadStatus() {
+  const s = await api("/api/status");
+  const m = s.summary;
+  document.getElementById("summary").textContent =
+    `${num(m.memories)} memories · ${num(m.chunks)} chunks · 엔티티 ${num(m.entities)} · 관계 ${num(m.relations)}` +
+    ` · ${m.model} · schema v${m.schema} · ${m.size_mb} MB · ${m.db} (읽기 전용)`;
+  const bad = s.checks.filter(c => c.level === "error").length;
+  document.getElementById("status").replaceChildren(
+    h("section", {}, h("h2", {}, bad ? `정합성 — 깨진 항목 ${bad}개` : "정합성·신선도"), s.checks.map(checkRow)),
+    h("section", {}, h("h2", {}, "통계 (오류가 아니라 설명)"), s.stats.map(checkRow)),
+    h("section", {}, h("h2", {}, "마지막 측정 — README `## 지금 성능` 원문, 실시간 계산 아님"),
+      h("div", { class: "perf" }, inlineMd(s.performance))));
+}
+
+function distTable(title, rows, key, note) {
+  const max = Math.max(...rows.map(r => (r.cold || 0) + (r.hot || 0)));
+  const bar = r => h("div", { class: "bar", style: `width:${((r.cold + r.hot) / max) * 100}%` },
+    h("i", { style: `width:${(r.cold / (r.cold + r.hot || 1)) * 100}%;background:var(--cold)` }),
+    h("i", { style: `width:${(r.hot / (r.cold + r.hot || 1)) * 100}%;background:var(--hot)` }));
+  return h("section", {}, h("h2", {}, title),
+    note ? h("div", { class: "note", style: "margin-bottom:6px" }, note) : null,
+    h("table", {}, h("tr", {}, h("th", {}, key), h("th", { style: "width:40%" }, h("span", { class: "legend" },
+      h("i", { style: "background:var(--cold)" }), "cold", h("i", { style: "background:var(--hot)" }), "hot")),
+      h("th", {}, "cold"), h("th", {}, "hot")),
+      rows.map(r => h("tr", {}, h("td", {}, r[key]), h("td", {}, bar(r)), h("td", { class: "n" }, num(r.cold)), h("td", { class: "n" }, num(r.hot))))));
+}
+
+async function loadOverview() {
+  const o = await api("/api/overview");
+  document.getElementById("dist").replaceChildren(
+    distTable("프로젝트", o.by_project, "project"),
+    distTable("agent", o.by_agent, "agent"),
+    distTable("날짜 분포", o.by_month, "month",
+      "지금 남아 있는 기억의 날짜 분포. hot 은 파일 mtime 이고 편집하면 행이 새로 바뀌어서, 저장 이력이 아니다."),
+    h("section", {}, h("h2", {}, "active session"),
+      h("table", {}, o.sessions.map(s => h("tr", {}, h("td", { class: "mono" }, s.key), h("td", { class: "mono" }, s.value))))));
+  for (const [id, rows, key] of [["f-project", o.by_project, "project"], ["g-project", o.by_project, "project"],
+                                 ["r-project", o.by_project, "project"], ["f-agent", o.by_agent, "agent"],
+                                 ["r-agent", o.by_agent, "agent"]])
+    document.getElementById(id).append(...rows.map(r => h("option", { value: r[key] }, `${r[key]} (${num(r.total)})`)));
+}
+
+const state = { offset: 0, selected: null };
+const filters = () => ({
+  project: document.getElementById("f-project").value, tier: document.getElementById("f-tier").value,
+  agent: document.getElementById("f-agent").value, superseded: document.getElementById("f-sup").checked ? "1" : "",
+  q: document.getElementById("f-q").value.trim(), offset: state.offset,
+});
+const tierTag = t => h("span", { class: `tag ${t}` }, t);
+
+async function loadList() {
+  const r = await api("/api/memories", filters());
+  document.getElementById("rows").replaceChildren(...r.items.map(m =>
+    h("tr", { class: m.id === state.selected ? "sel" : "", onclick: () => loadDetail(m.id) },
+      h("td", {}, h("div", {}, tierTag(m.tier), m.superseded ? h("span", { class: "tag sup" }, "정정됨") : null,
+        h("span", { class: "tag" }, m.project || "(없음)"), m.entities ? h("span", { class: "tag" }, `엔티티 ${m.entities}`) : null,
+        h("span", { class: "note" }, m.created_at.slice(0, 10))),
+        h("div", {}, m.topic), h("div", { class: "snippet" }, m.snippet)))));
+  const last = Math.min(r.offset + r.page, r.total);
+  document.getElementById("pager").replaceChildren(
+    h("button", { onclick: () => { state.offset = Math.max(0, r.offset - r.page); loadList(); }, ...(r.offset ? {} : { disabled: "" }) }, "이전"),
+    `${r.total ? r.offset + 1 : 0}–${last} / ${num(r.total)}`,
+    h("button", { onclick: () => { state.offset = r.offset + r.page; loadList(); }, ...(last < r.total ? {} : { disabled: "" }) }, "다음"));
+}
+
+function link(id, label) {
+  return h("a", { href: "#", onclick: e => { e.preventDefault(); loadDetail(id); } }, label);
+}
+
+async function loadDetail(id) {
+  state.selected = id;
+  document.querySelectorAll(".list tr").forEach(tr => tr.classList.remove("sel"));
+  const m = await api("/api/memory", { id });
+  if (!m) return;
+  const sup = m.supersession;
+  const meta = [["id", m.id], ["session", m.session], ["project", m.project], ["agent", m.agent],
+                ["source", m.source], ["created_at", m.created_at], ["path", m.path], ["chunks", m.chunks]];
+  document.getElementById("detail").replaceChildren(h("section", {},
+    h("div", {}, tierTag(m.tier), h("b", {}, m.topic)),
+    sup ? h("div", { class: "note", style: "color:var(--error)" }, "정정됨 → ",
+      sup.resolved === false ? `해석 안 되는 참조 ${sup.ref}` : link(sup.id, sup.topic),
+      sup.current ? h("span", {}, ` · 현재판(${sup.hops}단계) → `, link(sup.current.id, sup.current.topic)) : null) : null,
+    m.corrects.length ? h("div", { class: "note" }, "이 기억이 정정한 것: ",
+      m.corrects.map((c, i) => [i ? " · " : "", link(c.id, c.topic)])) : null,
+    h("table", {}, meta.filter(([, v]) => v != null).map(([k, v]) =>
+      h("tr", {}, h("th", {}, k), h("td", { class: "mono" }, String(v))))),
+    m.entities.length ? h("div", { style: "margin:8px 0" }, m.entities.map(e => h("span", { class: "tag", title: e.type }, `${e.display} · ${e.type}`))) : null,
+    m.relations.length ? h("details", {}, h("summary", {}, `관계 ${m.relations.length}개`),
+      h("ul", {}, m.relations.map(r => h("li", { class: "mono" }, `${r.source} —${r.predicate}→ ${r.target}`)))) : null,
+    h("div", { class: "body" }, m.content)));
+}
+
+let timer;
+for (const id of ["f-project", "f-tier", "f-agent", "f-sup"])
+  document.getElementById(id).onchange = () => { state.offset = 0; loadList(); };
+document.getElementById("f-q").oninput = () => { clearTimeout(timer); timer = setTimeout(() => { state.offset = 0; loadList(); }, 250); };
+const TABS = ["status", "recall", "content", "graph"];
+function showTab(tab) {
+  document.querySelectorAll("nav button").forEach(x => x.classList.toggle("on", x.dataset.tab === tab));
+  for (const id of TABS) document.getElementById(id).hidden = id !== tab;
+  history.replaceState(null, "", "#" + tab);
+  if (tab === "graph") { if (G.loaded) schedule(); else { G.loaded = true; loadGraph(); } }
+}
+function openMemory(id) { showTab("content"); loadDetail(id); }
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => showTab(b.dataset.tab));
+
+// ------------------------------------------------------------------ recall
+async function runRecall() {
+  const query = document.getElementById("r-q").value.trim();
+  if (!query) return;
+  const meta = document.getElementById("r-meta");
+  meta.replaceChildren(h("span", { class: "note" }, "회수 중…"));
+  const params = { query };
+  for (const k of ["rerank", "limit", "project", "tier", "agent"]) params[k] = document.getElementById("r-" + k).value;
+  const r = await api("/api/recall", params);
+  if (!r || r.status !== "ok") return meta.replaceChildren(h("span", { class: "note" }, r ? r.message : "오류"));
+  const rerank = r.reranked ? `상위 ${r.reranked}개 리랭크됨 — 이 범위의 순서는 score 가 아니라 리랭커 판정`
+    : r.rerank_skipped ? `리랭크 건너뜀 (게이트: ${r.rerank_skipped})` : "리랭크 안 함";
+  meta.replaceChildren(h("span", {},
+    h("span", { class: "tag" }, r.mode), h("span", { class: "tag" }, rerank),
+    r.rescued ? h("span", { class: "tag" }, `단독 레인 1위 구제 ${r.rescued}건`) : null,
+    h("span", { class: "note" }, `${r.results_count}건 · ${num(r.elapsed_ms)} ms`),
+    r.warning ? h("div", { class: "note", style: "color:var(--error)" }, r.warning) : null));
+  const t = r.trace;
+  const via = id => !t ? null
+    : !t.before_slots.includes(id) && t.after_slots.includes(id) ? "tier 슬롯으로 들어옴"
+    : !t.after_slots.includes(id) && t.final.includes(id) ? "단독 레인 1위 구제" : null;
+  const laneRanks = id => !t ? "" : Object.entries(t.memories[id]?.lane_ranks || {}).map(([l, p]) => `${l} ${p}`).join(" · ");
+  document.getElementById("r-rows").replaceChildren(...r.results.map((m, i) => {
+    const sup = m.superseded_by, how = via(m.id), logit = t && t.logits[m.id];
+    return h("tr", { onclick: () => openMemory(m.id) },
+      h("td", { class: "n", style: "width:28px" }, i + 1),
+      h("td", {}, h("div", {}, tierTag(m.tier), m.lanes.map(l => h("span", { class: "tag" }, l)),
+          h("span", { class: "tag" }, m.project || "(없음)"), h("span", { class: "note mono" }, ` score ${m.score}`),
+          logit != null ? h("span", { class: "note mono" }, ` logit ${logit}`) : null,
+          h("span", { class: "note" }, ` ${m.created_at.slice(0, 10)}`),
+          how ? h("span", { class: "tag sup" }, how) : null),
+        t ? h("div", { class: "note mono" }, `레인 순위: ${laneRanks(m.id)}`) : null,
+        h("div", {}, m.topic),
+        sup ? h("div", { class: "note", style: "color:var(--error)" }, "정정됨 → ",
+          sup.resolved === false ? `해석 안 되는 참조 ${sup.ref}` : sup.topic,
+          sup.current ? ` · 현재판(${sup.hops}단계) → ${sup.current.topic}` : "") : null,
+        h("div", { class: "snippet" }, m.content)));
+  }));
+  renderTrace(t, params.rerank);
+}
+
+// One column per stage. Hovering an entry lights the same memory in every column, which
+// is how a reader sees where it came from and where it was moved.
+function renderTrace(t, requested) {
+  const box = document.getElementById("r-trace");
+  box.hidden = !t;
+  if (!t) return;
+  const final = new Set(t.final);
+  const column = (title, ids, note) => h("div", {}, h("h3", {}, title), note ? h("div", { class: "note" }, note) : null,
+    ids && ids.length ? h("ol", {}, ids.map(id => h("li", {
+      class: final.has(id) ? "final" : "", "data-id": id, title: t.memories[id]?.topic || id,
+      onmouseenter: () => document.querySelectorAll(`.stages li[data-id="${id}"]`).forEach(x => x.classList.add("hl")),
+      onmouseleave: () => document.querySelectorAll(".stages li.hl").forEach(x => x.classList.remove("hl")),
+      onclick: () => openMemory(id) },
+      t.logits[id] != null && title === "리랭크 후" ? `[${t.logits[id]}] ` : "", t.memories[id]?.topic || id))) : h("div", { class: "note" }, "—"));
+  const g = t.gate;
+  const holders = `융합 1위를 가진 레인: ${g.lanes_holding_top.join(", ") || "없음"}`;
+  const gateNote = requested === "off" ? "rerank off"
+    : requested === "on" ? (t.reranked ? `강제 on — 게이트를 거치지 않음 (${holders})` : "강제 on 이지만 리랭커가 없다")
+    : g.skipped ? "게이트가 건너뜀 — 융합 1위를 세 레인이 모두 가졌다"
+    : t.reranked ? `게이트 통과 — ${holders}` : "리랭크 안 함 (리랭커 없음 또는 기본값 off)";
+  document.getElementById("r-timing").textContent =
+    "단계별 ms: " + Object.entries(t.timings_ms).map(([k, v]) => `${k} ${v}`).join(" · ") +
+    (t.graph_seeds.length ? ` · graph seed ${t.graph_seeds.length}개` : "") + " — 굵게 = 최종 결과, 항목에 마우스를 올리면 다른 단계의 같은 기억이 칠해진다";
+  document.getElementById("r-stages").replaceChildren(
+    ...Object.entries(t.lanes).map(([name, ids]) => column(name, ids)),
+    column("융합 (RRF)", t.fused),
+    column("리랭크 후", t.reranked, gateNote),
+    column("최종", t.final));
+}
+
+async function runRecallLog() {
+  const body = document.getElementById("rl-rows");
+  body.replaceChildren(h("tr", {}, h("td", { class: "note" }, "재생 중… 리랭크가 걸리는 드롭은 수 초씩 걸린다")));
+  const r = await api("/api/recall-log");
+  const rank = x => x.rank ? `${x.rank}위` : "창 밖";
+  const run = x => h("div", {}, h("b", {}, rank(x)), h("span", { class: "note" },
+    ` / ${x.limit} · rerank ${x.rerank == null ? "자동" : x.rerank ? "on" : "off"} · 융합 ${x.fused_rank ? x.fused_rank + "위" : `${x.fused_window} 밖`}`));
+  body.replaceChildren(
+    h("tr", {}, ["질의", "정답", "기록 당시", "당시 설정 재생", "지금 기본값"].map(t => h("th", {}, t))),
+    ...r.drops.map(d => h("tr", {},
+      h("td", {}, d.query, h("div", { class: "note" }, `${d.project || ""} · ${d.date || ""} · ${d.file}`)),
+      d.problem ? h("td", { colspan: 4, class: "note", style: "color:var(--warn)" }, d.problem)
+        : h("td", {}, h("a", { href: "#", onclick: e => { e.preventDefault(); openMemory(d.memory.id); } }, d.memory.topic)),
+      ...(d.problem ? [] : [
+        h("td", {}, h("b", {}, d.recorded.rank ? `${d.recorded.rank}위` : "창 밖"),
+          h("span", { class: "note" }, ` / ${d.recorded.limit ?? 5} · rerank ${d.recorded.rerank == null ? "자동" : d.recorded.rerank ? "on" : "off"}`)),
+        h("td", {}, run(d.as_recorded)), h("td", {}, run(d.current))]))));
+}
+document.getElementById("rl-run").onclick = runRecallLog;
+
+document.getElementById("r-q").onkeydown = e => { if (e.key === "Enter") runRecall(); };
+for (const k of ["rerank", "limit", "project", "tier", "agent"]) document.getElementById("r-" + k).onchange = runRecall;
+
+// ------------------------------------------------------------------- graph
+// A plain force layout on canvas -- charge between every pair, springs on edges, a pull to
+// the centre -- after d3-force's formulas. 200-400 nodes is small enough for O(n^2) charge,
+// and it keeps a vendored library out of the repository.
+const GROUP_COLORS = { "개념": "#8b5cf6", "오류": "#e5484d", "결정": "#f59e0b", "도구": "#22a35a",
+                       "프로젝트·문서": "#3b82f6", "작업 항목": "#64748b", "기타": "#a1a1aa" };
+const CHARGE = -60, LINK = 30, GRAVITY = 0.04, DECAY = 0.0228;
+const G = { nodes: [], edges: [], byName: new Map(), view: { k: 1, x: 0, y: 0 }, alpha: 0, target: 0,
+            physics: true, hover: null, selected: null, drag: null, press: null, hide: new Set(), loaded: false, raf: 0 };
+const canvas = document.getElementById("g-canvas"), ctx = canvas.getContext("2d");
+const radius = n => 3 + Math.sqrt(n.degree) * 1.8;
+
+async function loadGraph() {
+  const g = await api("/api/graph", { project: document.getElementById("g-project").value,
+    tier: document.getElementById("g-tier").value, limit: document.getElementById("g-limit").value, hide: [...G.hide].join(",") });
+  const old = G.byName;  // nodes that survive a refilter keep their place
+  G.nodes = g.nodes.map((n, i) => {
+    const o = old.get(n.name), r = 10 * Math.sqrt(0.5 + i), a = i * Math.PI * (3 - Math.sqrt(5));
+    return { ...n, x: o ? o.x : r * Math.cos(a), y: o ? o.y : r * Math.sin(a), vx: 0, vy: 0, links: 0 };
+  });
+  G.byName = new Map(G.nodes.map(n => [n.name, n]));
+  G.edges = g.edges.map(e => ({ s: G.byName.get(e.source), t: G.byName.get(e.target), w: e.weight }));
+  for (const e of G.edges) { e.s.links++; e.t.links++; }
+  G.labels = new Set([...G.nodes].sort((a, b) => b.degree - a.degree).slice(0, 15));
+  G.hover = null;
+  if (G.selected && !G.byName.has(G.selected.name)) selectNode(null);
+  else if (G.selected) G.selected = G.byName.get(G.selected.name);
+  document.getElementById("g-count").textContent = `${G.nodes.length} nodes, ${G.edges.length} edges`;
+  document.getElementById("g-note").textContent =
+    `relation 그래프 — 엔티티 ${num(g.total_nodes)}개·관계 쌍 ${num(g.total_edges)}개 중, 고유 이웃이 많은 허브와 각 허브의 이웃 4개. ` +
+    "노드 크기 = 고유 이웃 수(전체 그래프 기준). 회수의 graph lane 은 relation 이 아니라 공유 엔티티로 찾으므로 이 그림과 같은 정보가 아니다.";
+  document.getElementById("g-legend").replaceChildren(...g.groups.filter(x => x.count || x.hidden).map(x =>
+    h("span", { class: x.hidden ? "off" : "", title: `${num(x.count)}개`, onclick: () => {
+      G.hide.has(x.name) ? G.hide.delete(x.name) : G.hide.add(x.name); loadGraph(); } },
+      h("i", { style: `background:${GROUP_COLORS[x.name]}` }), x.name)));
+  G.alpha = 1;
+  for (let i = 0; i < 300; i++) tick();  // settle before the first paint
+  fit();
+}
+
+function tick() {
+  const a = G.alpha, N = G.nodes;
+  for (let i = 0; i < N.length; i++) {
+    const p = N[i];
+    for (let j = i + 1; j < N.length; j++) {
+      const q = N[j];
+      let dx = q.x - p.x, dy = q.y - p.y, d2 = dx * dx + dy * dy;
+      if (d2 > 90000) continue;
+      if (d2 < 1) { dx = Math.random() - 0.5; dy = Math.random() - 0.5; d2 = 1; }
+      const f = CHARGE * a / d2;
+      p.vx += dx * f; p.vy += dy * f; q.vx -= dx * f; q.vy -= dy * f;
+    }
+  }
+  for (const e of G.edges) {
+    let dx = e.t.x + e.t.vx - e.s.x - e.s.vx, dy = e.t.y + e.t.vy - e.s.y - e.s.vy;
+    let l = Math.sqrt(dx * dx + dy * dy) || 1;
+    l = (l - LINK) / l * a / Math.min(e.s.links, e.t.links);
+    dx *= l; dy *= l;
+    const b = e.s.links / (e.s.links + e.t.links);
+    e.t.vx -= dx * b; e.t.vy -= dy * b; e.s.vx += dx * (1 - b); e.s.vy += dy * (1 - b);
+  }
+  for (const n of N) {
+    if (n === G.drag) { n.vx = n.vy = 0; continue; }
+    n.vx = (n.vx - n.x * GRAVITY * a) * 0.6; n.vy = (n.vy - n.y * GRAVITY * a) * 0.6;
+    n.x += n.vx; n.y += n.vy;
+  }
+  G.alpha += (G.target - G.alpha) * DECAY;
+}
+
+function schedule() { if (!G.raf) G.raf = requestAnimationFrame(frame); }
+function frame() {
+  G.raf = 0;
+  if (G.physics && (G.alpha > 0.002 || G.target)) { tick(); schedule(); }
+  draw();
+}
+
+function draw() {
+  const dpr = devicePixelRatio || 1, w = canvas.clientWidth, hgt = canvas.clientHeight;
+  if (canvas.width !== w * dpr || canvas.height !== hgt * dpr) { canvas.width = w * dpr; canvas.height = hgt * dpr; }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const { k, x, y } = G.view;
+  ctx.setTransform(dpr * k, 0, 0, dpr * k, dpr * x, dpr * y);
+  const focus = G.selected || G.hover;
+  const near = focus ? new Set([focus, ...G.edges.flatMap(e => e.s === focus ? [e.t] : e.t === focus ? [e.s] : [])]) : null;
+  ctx.lineWidth = 1 / k;
+  for (const e of G.edges) {
+    const lit = !near || e.s === focus || e.t === focus;
+    ctx.strokeStyle = lit ? "rgba(80, 80, 92, 0.5)" : "rgba(80, 80, 92, 0.07)";
+    ctx.beginPath(); ctx.moveTo(e.s.x, e.s.y); ctx.lineTo(e.t.x, e.t.y); ctx.stroke();
+  }
+  for (const n of G.nodes) {
+    ctx.globalAlpha = !near || near.has(n) ? 1 : 0.2;
+    ctx.fillStyle = GROUP_COLORS[n.group];
+    ctx.beginPath(); ctx.arc(n.x, n.y, radius(n), 0, 2 * Math.PI); ctx.fill();
+    if (n === G.selected) { ctx.lineWidth = 2.5 / k; ctx.strokeStyle = "#1d1d1f"; ctx.stroke(); ctx.lineWidth = 1 / k; }
+  }
+  ctx.globalAlpha = 1;
+  ctx.font = `${12 / k}px -apple-system, "Apple SD Gothic Neo", sans-serif`;
+  ctx.lineWidth = 3 / k; ctx.strokeStyle = "rgba(255, 255, 255, 0.85)"; ctx.fillStyle = "#1d1d1f";
+  const label = n => {
+    const lx = n.x + radius(n) + 3 / k, ly = n.y + 4 / k;
+    ctx.strokeText(n.display, lx, ly); ctx.fillText(n.display, lx, ly);
+  };
+  for (const n of G.nodes) if (n !== focus && (near ? near.has(n) : G.labels.has(n))) label(n);
+  if (focus) { ctx.font = `600 ${13 / k}px -apple-system, "Apple SD Gothic Neo", sans-serif`; label(focus); }
+}
+
+function fit() {
+  const w = canvas.clientWidth, hgt = canvas.clientHeight;
+  if (!G.nodes.length || !w) return schedule();  // still repaint: an emptied graph must clear
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const n of G.nodes) {
+    const r = radius(n);
+    x0 = Math.min(x0, n.x - r); y0 = Math.min(y0, n.y - r); x1 = Math.max(x1, n.x + r); y1 = Math.max(y1, n.y + r);
+  }
+  const k = Math.min(w / (x1 - x0 + 60), hgt / (y1 - y0 + 60), 4);
+  G.view = { k, x: w / 2 - k * (x0 + x1) / 2, y: hgt / 2 - k * (y0 + y1) / 2 };
+  schedule();
+}
+
+const toWorld = (sx, sy) => [(sx - G.view.x) / G.view.k, (sy - G.view.y) / G.view.k];
+function nodeAt(sx, sy) {
+  const [wx, wy] = toWorld(sx, sy);
+  let best = null, bd = Infinity;
+  for (const n of G.nodes) {
+    const d = Math.hypot(n.x - wx, n.y - wy);
+    if (d < radius(n) + 4 / G.view.k && d < bd) { best = n; bd = d; }
+  }
+  return best;
+}
+
+canvas.onpointerdown = e => {
+  const n = nodeAt(e.offsetX, e.offsetY);
+  G.press = { sx: e.offsetX, sy: e.offsetY, node: n, view: { ...G.view }, moved: false };
+  canvas.setPointerCapture(e.pointerId);
+  if (n) { G.drag = n; G.target = 0.3; }
+  schedule();
+};
+canvas.onpointermove = e => {
+  const p = G.press;
+  if (!p) {
+    const n = nodeAt(e.offsetX, e.offsetY);
+    if (n !== G.hover) { G.hover = n; canvas.style.cursor = n ? "pointer" : "grab"; schedule(); }
+    return;
+  }
+  const dx = e.offsetX - p.sx, dy = e.offsetY - p.sy;
+  if (Math.abs(dx) + Math.abs(dy) > 3) p.moved = true;
+  if (p.node) [p.node.x, p.node.y] = toWorld(e.offsetX, e.offsetY);
+  else G.view = { ...G.view, x: p.view.x + dx, y: p.view.y + dy };
+  schedule();
+};
+canvas.onpointerup = () => {
+  const p = G.press;
+  G.press = null; G.drag = null; G.target = 0;
+  if (p && !p.moved) selectNode(p.node);
+  schedule();
+};
+canvas.onwheel = e => {
+  e.preventDefault();
+  const { k, x, y } = G.view, nk = Math.min(Math.max(k * Math.exp(-e.deltaY * 0.0015), 0.1), 8);
+  G.view = { k: nk, x: e.offsetX - (e.offsetX - x) * nk / k, y: e.offsetY - (e.offsetY - y) * nk / k };
+  schedule();
+};
+
+async function selectNode(n) {
+  G.selected = n;
+  schedule();
+  const panel = document.getElementById("g-panel");
+  if (!n) return panel.replaceChildren(h("span", { class: "note" }, "노드를 누르면 그 엔티티를 언급한 기억과 이웃이 여기 나옵니다."));
+  const r = await api("/api/memories", { entity: n.name });
+  if (G.selected !== n) return;
+  const nbrs = G.edges.filter(e => e.s === n || e.t === n).map(e => ({ n: e.s === n ? e.t : e.s, w: e.w }))
+    .sort((a, b) => b.w - a.w);
+  panel.replaceChildren(h("section", {},
+    h("div", {}, h("span", { class: "tag", style: `background:${GROUP_COLORS[n.group]};color:#fff` }, n.group), h("b", {}, n.display)),
+    h("div", { class: "note" }, `type ${n.type} · 고유 이웃 ${n.degree} (화면에 ${nbrs.length})`),
+    h("h2", { style: "margin-top:12px" }, `언급한 기억 ${num(r.total)}건${r.total > r.items.length ? ` (최근 ${r.items.length})` : ""}`),
+    h("ul", {}, r.items.map(m => h("li", {}, tierTag(m.tier),
+      h("a", { href: "#", onclick: ev => { ev.preventDefault(); openMemory(m.id); } }, m.topic)))),
+    h("h2", { style: "margin-top:12px" }, "화면 속 이웃 (관계 행 수)"),
+    h("ul", {}, nbrs.map(x => h("li", {},
+      h("a", { href: "#", onclick: ev => { ev.preventDefault(); selectNode(x.n); } }, x.n.display),
+      h("span", { class: "note" }, ` ${x.w}`))))));
+}
+
+document.getElementById("g-fit").onclick = fit;
+document.getElementById("g-physics").onclick = e => {
+  G.physics = !G.physics;
+  e.target.classList.toggle("on", G.physics);
+  if (G.physics) { G.alpha = Math.max(G.alpha, 0.3); schedule(); }
+};
+for (const id of ["g-project", "g-tier", "g-limit"]) document.getElementById(id).onchange = loadGraph;
+window.onresize = schedule;
+
+loadStatus();
+loadOverview().then(loadList);
+showTab(TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : "status");
+</script>
+</body>
+</html>

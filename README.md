@@ -424,7 +424,11 @@ python scripts/annotate.py batch.json
 .venv/bin/python scripts/annotate.py --list                # 주석이 빠진 기억
 .venv/bin/python scripts/experiment_rerank.py --tier cold  # 리랭커 상한 (모델 없이도 됨)
 .venv/bin/python scripts/eval_paraphrase.py --tier cold --rerank   # 리랭커 켠 프로덕션 경로
+.venv/bin/python scripts/dashboard.py                      # 읽기 전용 대시보드 http://127.0.0.1:8765
 ```
+
+대시보드는 상태(정합성·hot 신선도) · 회수(단계별 trace, recall-log 재생) · 내용 · 그래프 네 탭입니다.
+스토어를 `mode=ro` 로만 열고 hot 미러를 sync 하지 않습니다 — 근거는 `scripts/dashboard.py` 머리말.
 
 `eval_recall.py`는 실제 `store.recall` 경로를 호출합니다. 각 기억의 본문 중간 문장을 질의로
 넣고 원본이 몇 위로 돌아오는지 재므로 라벨링이 필요 없습니다.
