@@ -4,6 +4,7 @@ import json
 import os
 import re
 import sqlite3
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -658,7 +659,9 @@ def _reserve_tier_slots(
     return window + rest
 
 
-def _rerank(query: str, ranked: list, rows: dict, depth: int) -> tuple[list, bool]:
+def _rerank(
+    query: str, ranked: list, rows: dict, depth: int, logits_out: dict | None = None
+) -> tuple[list, bool]:
     """Reorder the top `depth` by cross-encoder score, leaving the tail alone.
 
     Replaces the fused order rather than blending with it -- measured: blending the
@@ -668,6 +671,9 @@ def _rerank(query: str, ranked: list, rows: dict, depth: int) -> tuple[list, boo
 
     A missing export is not fatal: the caller asked for better ranking, not for the
     request to fail, so a base-ordered answer beats no answer.
+
+    `logits_out`, when given, receives each head row's logit -- for `recall(trace=True)`.
+    Positional on purpose: tests stub this function as `lambda *a`.
     """
     if depth <= 0 or len(ranked) < 2 or not rerank.available():
         return ranked, False
@@ -675,6 +681,8 @@ def _rerank(query: str, ranked: list, rows: dict, depth: int) -> tuple[list, boo
     logits = rerank.scores(
         query, [f"{rows[mid]['topic']}\n{rows[mid]['content']}" for mid, _ in head]
     )
+    if logits_out is not None:
+        logits_out.update({mid: round(float(x), 4) for (mid, _), x in zip(head, logits)})
     # Only the order changes; every row keeps its fusion score. Substituting the logit
     # was tried and is wrong: the score becomes two scales in one response, and any
     # downstream step that compares scores then mixes them (it did -- see
@@ -789,7 +797,13 @@ def recall(
     tier: str | None = None,
     rerank: bool | None = None,
     agent: str | None = None,
+    trace: bool = False,
 ) -> dict:
+    """`trace=True` adds a `trace` block: what each stage held before the next one moved it.
+
+    It only records; no ordering decision reads it, so a traced recall returns the same
+    results as an untraced one (tests/test_recall_trace.py holds that).
+    """
     query = query.strip()
     if not query:
         return {"status": "error", "message": "query is empty"}
@@ -802,15 +816,26 @@ def recall(
     if config.HOT_ENABLED and tier != "cold":
         hot.sync(con)
 
+    timings: dict[str, float] = {}
+    clock = [time.perf_counter()]
+
+    def lap(stage: str) -> None:
+        now = time.perf_counter()
+        timings[stage] = round((now - clock[0]) * 1000, 1)
+        clock[0] = now
+
     where, params = _filters(session, project, tier, agent)
     pool = config.CANDIDATE_POOL
     lanes: dict[str, list[str]] = {}
     if mode in ("hybrid", "lexical"):
         lanes["lexical"] = _lexical(con, query, where, params, pool)
+        lap("lexical")
     if mode in ("hybrid", "semantic"):
         lanes["semantic"] = _semantic(con, query, where, params, pool)
+        lap("semantic")
 
     weights: dict[str, float] = {}
+    seeds: list[str] = []
     if mode == "hybrid" and config.GRAPH_LANE_WEIGHT > 0:
         seeds = [
             mid
@@ -822,12 +847,16 @@ def recall(
         if graph_ids:
             lanes["graph"] = graph_ids
             weights["graph"] = config.GRAPH_LANE_WEIGHT
+        lap("graph")
 
     scores = _fuse(lanes, config.RRF_K, weights)
     if not scores:
         response = {"status": "ok", "results": [], "results_count": 0, "mode": mode}
         if warning:
             response["warning"] = warning
+        if trace:  # a search that found nothing is the one most worth reading stage by stage
+            response["trace"] = _trace(lanes, seeds, [], None, {}, [], [], limit, {}, timings,
+                                       False)
         return response
 
     rows = {
@@ -853,6 +882,9 @@ def recall(
         key=lambda kv: (-final_score(*kv), kv[0]),
     )
 
+    lap("fuse")
+    fused = ranked
+    logits: dict[str, float] | None = {} if trace else None
     reranked = gated = False
     # `rerank` here is the caller's flag, which shadows the module of the same name;
     # `_rerank` below is where the module is used.
@@ -866,7 +898,8 @@ def recall(
             and _corroborated(lanes, ranked[0][0])
         )
         if not gated:
-            ranked, reranked = _rerank(query, ranked, rows, config.RERANK_DEPTH)
+            ranked, reranked = _rerank(query, ranked, rows, config.RERANK_DEPTH, logits)
+    lap("rerank")
 
     # After reranking, not before: the slots exist so neither tier disappears from
     # what the caller sees, and the reranked order is what they see.
@@ -877,9 +910,11 @@ def recall(
     )
     # Last, so tier reservation cannot spend the rescued slot: it displaces the weakest
     # entries of the window, which is exactly where a rescue lands.
+    slotted = ordered
     rescued = 0
     if config.RESCUE_LANE_LEADERS:
         ordered, rescued = _rescue_lane_leaders(ordered, lanes, limit)
+    lap("slots_rescue")
 
     cap = _DETAIL_CHARS.get(detail)
     results = []
@@ -929,7 +964,46 @@ def recall(
         response["rescued"] = rescued
     if warning:
         response["warning"] = warning
+    if trace:
+        response["trace"] = _trace(
+            lanes, seeds, fused, ranked if reranked else None, logits or {}, slotted,
+            ordered, limit, rows, timings, gated)
     return response
+
+
+def _trace(lanes, seeds, fused, reranked, logits, slotted, ordered, limit, rows, timings,
+           gated) -> dict:
+    """Each stage's window as ids, plus what is needed to read them without a lookup.
+
+    The window is `max(limit, RERANK_DEPTH)` so a reranked head is visible whole. Stage
+    differences are left to the reader: ids in `after_slots` but not `before_slots` came
+    in for a tier, ids in `final` but not `after_slots` were rescued.
+    """
+    window = max(limit, config.RERANK_DEPTH)
+    ids = lambda pairs, n: [mid for mid, _ in pairs[:n]]  # noqa: E731
+    out = {
+        "lanes": {name: found[:window] for name, found in lanes.items()},
+        "graph_seeds": seeds,
+        "fused": ids(fused, window),
+        "reranked": ids(reranked, window) if reranked is not None else None,
+        "logits": logits,
+        "gate": {"skipped": gated, "top": fused[0][0] if fused else None,
+                 "lanes_holding_top": [n for n, found in lanes.items()
+                                       if fused and fused[0][0] in found]},
+        "before_slots": ids(reranked if reranked is not None else fused, limit),
+        "after_slots": ids(slotted, limit),
+        "final": ids(ordered, limit),
+        "timings_ms": timings,
+    }
+    seen = {mid for key in ("fused", "reranked", "after_slots", "final") for mid in out[key] or []}
+    seen |= {mid for found in out["lanes"].values() for mid in found}
+    position = {name: {mid: i + 1 for i, mid in enumerate(found)} for name, found in lanes.items()}
+    out["memories"] = {
+        mid: {"topic": rows[mid]["topic"], "tier": rows[mid]["tier"],
+              "lane_ranks": {n: p[mid] for n, p in position.items() if mid in p}}
+        for mid in seen if mid in rows
+    }
+    return out
 
 
 def sessions_tier_counts(con: sqlite3.Connection) -> dict:
